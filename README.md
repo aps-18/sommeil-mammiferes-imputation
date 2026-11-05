@@ -68,6 +68,8 @@ L’imputation permet d’utiliser les **62 espèces**, contre 55 avant imputati
 - `readr`
 - `dplyr`
 - `tidyr`
+- `stringr`
+- `reshape2`
 - `ggplot2`
 - `patchwork`
 - `corrplot`
@@ -77,9 +79,12 @@ L’imputation permet d’utiliser les **62 espèces**, contre 55 avant imputati
 **Statistiques et imputation**
 
 - `EnvStats`
+- `lsr`
 - `vcd`
 - `DescTools`
 - `lmtest`
+- `FNN`
+- `VIM`
 - `mice`
 
 **Document et tableaux**
@@ -99,8 +104,8 @@ sommeil-mammiferes-imputation/
 │   └── Logo_IAE.png
 ├── data/
 │   └── mammals_base.csv
-├── rapport/
-│   └── Sommeil_mammifères.pdf
+└── rapport/
+    └── Sommeil_mammifères.pdf
 ```
 
 Pour reproduire l’analyse, télécharger le dépôt complet, ouvrir `code/Sommeil_mammifères.qmd` dans RStudio et exécuter les blocs dans l’ordre depuis la racine du dépôt, avec les bibliothèques R nécessaires installées.
