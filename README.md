@@ -101,14 +101,13 @@ sommeil-mammiferes-imputation/
 │   └── mammals_base.csv
 ├── rapport/
 │   └── Sommeil_mammifères.pdf
-└── sommeil-mammiferes-imputation.Rproj
 ```
 
-L’analyse s’exécute dans RStudio en ouvrant le fichier `.Rproj`, puis en lançant les blocs du document Quarto avec les bibliothèques R installées.
+Pour reproduire l’analyse, télécharger le dépôt complet, ouvrir `code/Sommeil_mammifères.qmd` dans RStudio et exécuter les blocs dans l’ordre depuis la racine du dépôt, avec les bibliothèques R nécessaires installées.
 
 ## Rapport
 
-Le rapport complet présente les analyses, les graphiques et les annexes. [Consulter le rapport](rapport/Sommeil_mammifères.pdf)
+Le rapport complet présente les analyses, les graphiques et les annexes. [Consulter le rapport](rapport/Sommeil_mammife%CC%80res.pdf)
 
 ## Auteurs
 
