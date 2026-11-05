@@ -1,0 +1,2074 @@
+---
+title: "Sommeil des mammifères : analyse et imputation des données"
+author: Amélie Pires et Ikram Abouzayd
+format:
+  pdf:
+    toc: true
+    toc_depth: 2
+    toc-title: "Sommaire"
+    code-fold: true
+    echo: true
+    results: "asis"
+    highlight: true
+    text-justify: true
+---
+
+
+\begin{flushright}
+\vspace*{1cm}
+\includegraphics[width=4cm]{Logo_IAE.png}
+\end{flushright}
+
+\newpage
+
+# 1) Introduction 
+
+Chez les mammifères, le sommeil varie fortement d’une espèce à l’autre : certaines dorment de longues heures chaque jour, tandis que d’autres ont des périodes de sommeil beaucoup plus courtes. Ces différences peuvent s’expliquer par la taille de l’animal, son mode de vie ou encore les dangers présents dans son environnement. Les étudier permet de mieux comprendre comment les espèces organisent leur sommeil en fonction de leurs besoins biologiques et des contraintes écologiques auxquelles elles sont confrontées.
+
+Pour analyser ces aspects, ce projet s’appuie sur un jeu de données issu de l’étude d’Allison et Cicchetti (1975), aujourd’hui disponible sur Kaggle. Cette base regroupe plusieurs informations biologiques, comportementales et écologiques concernant différentes espèces de mammifères. Elle est particulièrement intéressante car elle combine des données sur la morphologie, le sommeil, le cycle de vie et le niveau de risque dans l’environnement naturel.
+
+La base contient tout d’abord deux variables biologiques : poids_corporel, qui correspond au poids total du mammifère en kilogrammes, et poids_cerveau, qui indique le poids de son cerveau. Ces valeurs permettent de comparer la taille des espèces et leur développement neurologique. Les variables liées au sommeil sont ensuite sommeil_non_paradoxal, sommeil_paradoxal et sommeil_total. Le sommeil paradoxal correspond à la phase durant laquelle le cerveau reste très actif et où surviennent la plupart des rêves, alors que le corps est complètement détendu. Le sommeil non paradoxal correspond aux phases plus calmes et plus profondes. La variable sommeil_total représente la durée totale de sommeil en additionnant ces deux phases.
+
+Deux autres variables décrivent des aspects du cycle de vie : esperance_vie, qui correspond au nombre moyen d’années vécues par l’espèce, et duree_gestation, qui indique le temps de gestation en jours. Elles renseignent sur la longévité et le rythme de reproduction, deux éléments qui peuvent être liés à la manière dont le sommeil s’organise.
+
+Enfin, la base contient trois variables ordinales codées de 1 à 5 : predation, exposition et danger. La prédation reflète le niveau de risque pour une espèce d’être attaquée par un prédateur. L’exposition indique à quel point une espèce est visible ou vulnérable lorsqu’elle dort. L’indice de danger combine la prédation et l’exposition pour donner une mesure globale du risque auquel l’espèce est confrontée. Comme ces valeurs sont ordinales, elles expriment un niveau de risque croissant plutôt qu’une valeur exacte.
+
+Dans la suite du rapport, nous commencerons par réaliser une analyse descriptive afin de mieux comprendre le comportement des variables et les relations possibles entre elles. Nous étudierons ensuite les valeurs manquantes présentes dans la base, en décrivant leur répartition et les mécanismes susceptibles d’expliquer leur absence. Enfin, nous appliquerons trois méthodes d’imputation différentes et comparerons leurs résultats pour évaluer leur impact sur l’analyse
+
+# 2) Construction de la base de donnée
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE,
+  message = FALSE
+)
+
+set.seed(123)
+```
+
+## 2.1 Import de la base de donnée
+
+```{r}
+library(readr)
+mammals_original <- read_csv("/Users/ameliepires/Desktop/Documents/FAC/M1/CM biostatistique I/projet/projet/mammals_base.csv")
+```
+
+## 2.2 Import des packages
+
+```{r, results="hide", message=FALSE, warning=FALSE}
+library(stringr)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(corrplot)
+library(tidyr)
+library(PerformanceAnalytics)
+library(patchwork)
+library(kableExtra)
+library(EnvStats)
+library(lsr)
+library(vcd)
+library(knitr)
+library(DescTools) 
+library(naniar)
+library(reshape2)
+library(FNN)
+library(VIM)
+library(mice)
+```
+
+```{r, echo=FALSE, results='hide'}
+# Traduction en francais
+trad <- c(
+  "Africanelephant" = "Éléphant d'Afrique",
+  "Africangiantpouchedrat" = "Rat géant africain à poche",
+  "ArcticFox" = "Renard arctique",
+  "Arcticgroundsquirrel" = "Écureuil terrestre arctique",
+  "Asianelephant" = "Éléphant d'Asie",
+  "Baboon" = "Babouin",
+  "Bigbrownbat" = "Grande chauve-souris brune",
+  "Braziliantapir" = "Tapir du Brésil",
+  "Cat" = "Chat",
+  "Chimpanzee" = "Chimpanzé",
+  "Chinchilla" = "Chinchilla",
+  "Cow" = "Vache",
+  "Deserthedgehog" = "Hérisson du désert",
+  "Donkey" = "Âne",
+  "EasternAmericanmole" = "Taupe d’Amérique de l'Est",
+  "Echidna" = "Échidné",
+  "Europeanhedgehog" = "Hérisson d’Europe",
+  "Galago" = "Galago",
+  "Genet" = "Genette",
+  "Giantarmadillo" = "Tatou géant",
+  "Giraffe" = "Girafe",
+  "Goat" = "Chèvre",
+  "Goldenhamster" = "Hamster doré",
+  "Gorilla" = "Gorille",
+  "Grayseal" = "Phoque gris",
+  "Graywolf" = "Loup gris",
+  "Groundsquirrel" = "Écureuil terrestre",
+  "Guineapig" = "Cochon d’Inde",
+  "Horse" = "Cheval",
+  "Jaguar" = "Jaguar",
+  "Kangaroo" = "Kangourou",
+  "Lessershort-tailedshrew" = "Musaraigne à courte queue",
+  "Littlebrownbat" = "Petite chauve-souris brune",
+  "Man" = "Homme",
+  "Molerat" = "Rat-taupe",
+  "Mountainbeaver" = "Aplodontie",
+  "Mouse" = "Souris",
+  "Muskshrew" = "Musaraigne musquée",
+  "NAmericanopossum" = "Opossum d’Amérique du Nord",
+  "Nine-bandedarmadillo" = "Tatou à neuf bandes",
+  "Okapi" = "Okapi",
+  "Owlmonkey" = "Douroucouli",
+  "Patasmonkey" = "Singe patas",
+  "Phanlanger" = "Phalanger",
+  "Pig" = "Cochon",
+  "Rabbit" = "Lapin",
+  "Raccoon" = "Raton laveur",
+  "Rat" = "Rat",
+  "Redfox" = "Renard roux",
+  "Rhesusmonkey" = "Singe rhésus",
+  "Rockhyrax(Heterob)" = "Damane des rochers (Heterohyrax)",
+  "Rockhyrax(Procaviahab)" = "Damane des rochers (Procavia)",
+  "Roedeer" = "Chevreuil",
+  "Sheep" = "Mouton",
+  "Slowloris" = "Loris lent",
+  "Starnosedmole" = "Condylure étoilé",
+  "Tenrec" = "Tenrec",
+  "Treehyrax" = "Damane arboricole",
+  "Treeshrew" = "Musaraigne arboricole",
+  "Vervet" = "Singe vervet",
+  "Wateropossum" = "Opossum aquatique",
+  "Yellow-belliedmarmot" = "Marmotte à ventre jaune"
+)
+```
+
+```{r, echo=FALSE, results='hide'}
+# Application de la traduction
+mammals_original$species_fr <- trad[mammals_original$species]
+
+names(mammals_original)[names(mammals_original) == "body_wt"]        <- "poids_corporel"
+names(mammals_original)[names(mammals_original) == "brain_wt"]       <- "poids_cerveau"
+names(mammals_original)[names(mammals_original) == "non_dreaming"]   <- "sommeil_non_paradoxal"
+names(mammals_original)[names(mammals_original) == "dreaming"]       <- "sommeil_paradoxal"
+names(mammals_original)[names(mammals_original) == "total_sleep"]    <- "sommeil_total"
+names(mammals_original)[names(mammals_original) == "life_span"]      <- "esperance_vie"
+names(mammals_original)[names(mammals_original) == "gestation"]      <- "duree_gestation"
+names(mammals_original)[names(mammals_original) == "predation"]      <- "predation"
+names(mammals_original)[names(mammals_original) == "exposure"]       <- "exposition"
+names(mammals_original)[names(mammals_original) == "danger"]         <- "danger"
+
+```
+
+```{r,echo=FALSE, results='hide'}
+#Suppression colonne species qui est en double
+mammals_original <- mammals_original[ , -1]
+
+#La dernière colonne en première
+mammals_original <- mammals_original[, c(ncol(mammals_original), 
+                                         1:(ncol(mammals_original)-1))]
+
+```
+
+## 2.3 Génération contrôlée de données manquantes
+
+La base de données contenait déjà environ 4 % de valeurs manquantes. Ces valeurs manquantes sont principalement dues à des informations non renseignées (not answers) dans la source initiale. Autrement dit, il ne s’agit pas de données inexistantes, mais de données qui existent en théorie, mais qui n’ont pas été mesurées ou rapportées pour certaines espèces. Par exemple, certaines espèces n’ont pas de données disponibles pour certaines phases du sommeil ou pour des variables biologiques comme la durée de gestation. Ces absences peuvent s’expliquer par des difficultés de mesure, par un manque d’observations ou par le fait que certaines données sont plus complexes à collecter selon les espèces.
+
+Comme ce pourcentage restait assez faible, nous avons ajouté nous-mêmes des valeurs manquantes pour pouvoir tester et comparer correctement les différentes méthodes d’imputation. Pour cela, nous avons choisi un effacement totalement aléatoire, correspondant à un schéma MCAR (Missing Completely At Random). Cela signifie que chaque cellule du tableau avait la même probabilité d’être remplacée par un NA, indépendamment de la variable ou de l’espèce concernée. Ce choix permet d’éviter d’introduire un biais dans la façon dont les données manquantes sont générées.
+
+Concernant la variable species_fr, nous n’avons pas appliqué d’effacement aléatoire. Techniquement, il aurait été possible de supprimer ou même d’imputer les noms des espèces en se basant sur des recherches externes, mais ce n’était pas l’objectif de notre analyse. Nous avons fait le choix de ne pas toucher à cette variable car notre travail porte principalement sur l’imputation des variables numériques et ordinales, qui sont celles utilisées dans les analyses statistiques à venir. Ainsi, toutes les autres colonnes ont été regroupées dans une matrice, puis environ 6 % de leurs cellules ont été tirées aléatoirement pour être remplacées par des NA. Associées aux 4 % de valeurs manquantes déjà présentes, ces suppressions nous fournissent un jeu de données suffisamment incomplet pour évaluer de manière pertinente les différentes méthodes d’imputation.
+
+```{r}
+#Effacement des données
+mammals <- mammals_original 
+
+set.seed(123)
+species_original <- mammals$species_fr
+cols_to_modify <- setdiff(names(mammals), "species_fr")
+m <- as.matrix(mammals[, cols_to_modify])
+
+n_NA <- round(length(m) * 0.06)
+indices <- sample(length(m), n_NA)
+
+m[indices] <- NA
+
+# Réinjection DANS mammals sans toucher species_fr
+mammals[, cols_to_modify] <- m
+
+mammals$species_fr <- species_original
+```
+
+Pourcentage totale de NA dans la base de donnée
+```{r}
+mean(is.na(mammals))
+```
+
+## 2.4 Modifications des formats de variables
+
+```{r}
+#Conversion des variables qualitatives ordinales en facteurs
+mammals$predation <- factor(mammals$predation, levels = 1:5, ordered = TRUE)
+mammals$exposition  <- factor(mammals$exposition,  levels = 1:5, ordered = TRUE)
+mammals$danger    <- factor(mammals$danger,    levels = 1:5, ordered = TRUE)
+
+```
+Nous avons converti ces variables en facteurs ordonnés afin que R reconnaisse correctement la progression logique entre les niveaux (de 1 à 5), ce qui permet d’effectuer des analyses adaptées aux variables qualitatives ordinales et d’éviter des interprétations erronées
+
+```{r}
+#Conversion de species_fr en variable étiquette
+rownames(mammals) <- mammals$species_fr
+rownames(mammals) <- NULL
+
+mammals$species_fr <- as.factor(mammals$species_fr)
+
+
+#Conversion des variables caractères en numériques
+mammals <- mammals %>%
+  mutate(
+    poids_corporel = as.numeric(poids_corporel),
+    poids_cerveau = as.numeric(poids_cerveau),
+    sommeil_non_paradoxal = as.numeric(sommeil_non_paradoxal),
+    sommeil_paradoxal = as.numeric(sommeil_paradoxal),
+    sommeil_total = as.numeric(sommeil_total),
+    esperance_vie = as.numeric(esperance_vie),
+    duree_gestation = as.numeric(duree_gestation)
+  )
+```
+
+# 3) Présentation des données
+
+## 3.1 Première visualisation des données
+
+```{r}
+str(mammals)
+```
+La structure du jeu de données montre que les variables numériques ont bien été converties au bon format, et que les variables qualitatives comme predation, exposition et danger sont maintenant des facteurs ordonnés, ce qui correspond mieux à leur signification. Cette mise en forme assure que les prochaines analyses statistiques seront réalisées sur des types de données adaptés et correctement interprétés par R.
+
+```{r}
+summary(mammals)
+```
+
+Le résumé statistique montre une forte variabilité entre les espèces, surtout pour les variables morphologiques comme le poids du corps et le poids du cerveau. Le sommeil total est en moyenne autour de 10 heures, avec une majorité de sommeil non paradoxal. Enfin, plusieurs variables présentent des valeurs manquantes, ce qui confirme l’intérêt de réaliser une imputation par la suite.
+
+```{r}
+glimpse(mammals)
+```
+
+```{r}
+plot(mammals)
+```
+
+Cette première visualisation permet d’observer rapidement la structure générale du jeu de données. On voit une forte dispersion pour les variables morphologiques, ce qui reflète la grande diversité des espèces. Certains liens apparaissent déjà clairement, comme la relation entre le sommeil total et le sommeil non paradoxal, ou entre le poids du corps et le poids du cerveau. À l’inverse, d’autres associations semblent plus faibles ou inexistantes. Cette vue d’ensemble aide à repérer les tendances générales avant d’approfondir l’analyse bivariée.
+
+## 3.2 Analyse univariée des données
+
+L’analyse univariée permet de décrire chaque variable séparément, afin de mieux comprendre la structure du jeu de données avant toute analyse statistique plus complexe. Elle met en évidence :  
+- la distribution des variables,   
+- la présence éventuelle de valeurs extrêmes,   
+- les premières tendances biologiques ou écologiques. 
+
+Cette étape est essentielle pour choisir ensuite des méthodes adaptées (tests, corrélations, modèles).
+
+```{r, echo=FALSE}
+#Variables qualitatives
+vars_quali <- c("predation", "exposition", "danger")
+```
+
+```{r, echo=FALSE}
+#Variables quantitatives
+vars_quanti <- c("poids_corporel", "poids_cerveau", "sommeil_non_paradoxal",
+                 "sommeil_paradoxal", "sommeil_total", "esperance_vie",
+                 "duree_gestation")
+```
+
+```{r, echo=FALSE}
+#Vecteur couleurs
+couleur <- c(
+  "1" = "lightgoldenrod1",
+  "2" = "darksalmon",
+  "3" = "darkolivegreen2",
+  "4" = "mistyrose2",
+  "5" = "paleturquoise3"
+)
+```
+
+### 3.2.1 Variables qualitatives
+
+#### Diagrammes circulaires 
+
+```{r, echo=FALSE}
+
+# Fonction pour créer un pie chart avec % affichés
+pie_var <- function(var){
+  
+  df <- mammals %>%
+    count(.data[[var]]) %>%
+    mutate(
+      perc = round(n / sum(n) * 100, 1),         # pourcentage
+      label = paste0(perc, "%")                  # texte à afficher
+    )
+  
+  ggplot(df, aes(x = "", y = n, fill = as.factor(.data[[var]]))) +
+    geom_bar(stat = "identity", width = 1, color = "white") +
+    coord_polar("y") +
+    geom_text(aes(label = label), 
+              position = position_stack(vjust = 0.5),
+              size = 4, color = "black") +       # taille et couleur du texte
+    scale_fill_manual(values = couleur) +
+    labs(title = paste("Répartition de", var), fill = var) +
+    theme_void() +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+      legend.position = "bottom"
+    )
+}
+
+# Création des trois graphiques
+p1 <- pie_var("predation")
+p2 <- pie_var("exposition")
+
+# Affichage côte à côte
+p1 | p2
+
+```
+
+
+Les trois diagrammes circulaires montrent que les niveaux de risque liés au sommeil sont, pour la majorité des espèces, faibles à modérés. La prédation se situe le plus souvent entre 1 et 3, ce qui indique que peu d’animaux sont exposés à un risque d’attaque très élevé. L’exposition confirme cette tendance : beaucoup d’espèces dorment dans des environnements plutôt protégés. L’indice de danger, qui combine les deux dimensions, reste lui aussi majoritairement dans les niveaux bas.
+
+Ces résultats sont cohérents biologiquement, car les espèces qui peuvent dormir dans des abris naturels (terriers, arbres, cavernes, nids…) ou qui ont peu de prédateurs naturels ont généralement des niveaux de risque faibles. Les animaux très exposés représentent une minorité, ce qui correspond à ce que l’on observe dans de nombreux écotypes.
+
+Les quelques valeurs manquantes (3 à 10 % selon les variables) seront traitées dans une partie prochaine afin d’obtenir des estimations fiables.
+
+--- 
+
+#### Diagrammes en barre
+
+```{r, echo=FALSE}
+for (var in vars_quali) {
+  plot <- mammals |>
+    ggplot() +
+    aes_string(x = var, fill = var) +
+    geom_bar() +
+    scale_fill_manual(values = couleur) +
+    theme_classic() +
+    labs(title = paste("Distribution de", var), x = var, fill = var)
+}
+plot
+```
+
+La distribution du danger confirme ce qu’on observait déjà : la plupart des espèces sont classées dans les niveaux de risque faibles à intermédiaires (1 à 3). Les situations de danger élevé (niveau 5) existent mais restent moins fréquentes.
+
+
+---
+
+### 3.2.2 Variables quantitatives
+
+#### Boxplot 
+
+```{r, echo=FALSE}
+mammals |>
+  pivot_longer(cols = where(is.numeric)) |>
+  ggplot(aes(y = value, x = "")) +
+  geom_boxplot(fill = "lightblue", alpha = 0.8) +
+  geom_jitter(color = "darkblue", alpha = 0.2) +
+  facet_wrap(~ name, scales = "free_y") +
+  theme_light()
+```
+Les boxplots montrent que certaines variables comme poids_corporel, poids_cerveau et duree_gestation présentent des valeurs très élevées pour quelques espèces. Ces points extrêmes ne sont pas forcément des erreurs : ils reflètent surtout la grande diversité de taille et de biologie chez les mammifères.
+
+Les variables liées au sommeil (sommeil_total, sommeil_non_paradoxal, sommeil_paradoxal) sont, au contraire, beaucoup plus concentrées, avec une variabilité plus faible entre espèces.
+
+Enfin, espérance_vie contient aussi quelques valeurs très hautes qui devront être vérifiées.
+
+Dans la suite du rapport, nous vérifierons si ces valeurs extrêmes sont cohérentes biologiquement ou si certaines doivent être traitées
+
+---
+
+#### Histogramme
+
+```{r, echo=FALSE}
+mammals |>
+  pivot_longer(cols = all_of(vars_quanti)) |>
+  ggplot(aes(x = value, fill = name)) +
+  geom_histogram(bins = 15, color = "black", alpha = 0.8) +
+  facet_wrap(~ name, scales = "free", ncol = 3) +
+  theme_light() +
+  scale_fill_brewer(palette = "Pastel1") +
+  guides(fill = "none") +
+  labs(title = "Histogrammes des variables quantitatives")
+```
+
+L’analyse des histogrammes permet de distinguer clairement deux types de comportements parmi les variables quantitatives du jeu de données, ce qui aide à mieux comprendre la structure biologique des mammifères étudiés.
+
+D’un côté, plusieurs variables présentent une distribution relativement régulière et homogène. C’est le cas des variables liées au sommeil (*sommeil_total*, *sommeil_non_paradoxal*, *sommeil_paradoxal*) mais aussi de *l’espérance de vie*. Leur forme est assez équilibrée, sans valeurs extrêmes trop éloignées du reste des données. Cela signifie que, pour ces caractéristiques, les espèces se ressemblent davantage et les variations observées correspondent à des différences normales entre mammifères. Ces variables sont donc plus simples à analyser, car elles ne présentent pas de rupture nette ou d’étalement trop important.
+
+À l’inverse, d’autres variables, notamment *poids_corporel*, *poids_cerveau* et *duree_gestation*, montrent des distributions fortement asymétriques, avec une grande majorité de valeurs très faibles et quelques valeurs extrêmement élevées. Cette structure n’est pas due à une erreur, mais reflète la réalité biologique : le jeu de données rassemble des espèces de tailles très différentes. Une souris ou une chauve-souris ne peut évidemment pas être comparée à un éléphant ou une baleine, ce qui crée naturellement des « étirements » dans la distribution. 
+
+---
+
+#### Tableau de statistiques descriptives
+
+
+```{r, echo=FALSE}
+stats <- mammals |>
+  summarise(
+    across(
+      .cols = all_of(vars_quanti),
+      .fns = list(
+        moyenne = ~mean(.x, na.rm=TRUE),
+        mediane = ~median(.x, na.rm=TRUE),
+        minimum = ~min(.x, na.rm=TRUE),
+        maximum = ~max(.x, na.rm=TRUE),
+        sd = ~sd(.x, na.rm=TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    )
+  ) |>
+  pivot_longer(everything()) |>
+  mutate(
+    variable = sub("_[^_]+$", "", name),
+    mesure   = sub("^.*_", "", name)
+  ) |>
+  select(variable, mesure, value) |>
+  pivot_wider(names_from = mesure, values_from = value) |>
+  arrange(variable)
+
+# Tableau propre et lisible
+stats %>%
+  kable(
+    caption = "Statistiques descriptives des variables quantitatives",
+    digits = 2,
+    align = "c"
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover", "condensed"),
+    font_size = 13
+  ) %>%
+  row_spec(0, bold = TRUE) %>%
+  column_spec(1, bold = TRUE)
+
+```
+
+Les statistiques confirment ce que montraient déjà les histogrammes et boxplots : les variables biologiques présentent des amplitudes très différentes. Par exemple, poids_corporel varie de 0,005 kg à 6654 kg, et poids_cerveau de 0,14 g à 5712 g, ce qui reflète la grande diversité des espèces. À l’inverse, les variables de sommeil sont beaucoup plus regroupées : sommeil_total est centré autour de 10 h et sommeil_paradoxal autour de 2 h, avec peu d’écart.
+
+
+---
+
+#### Valeurs extremes 
+
+***Tests détection des valeurs atypiques***
+
+```{r, results='hide'}
+rosnerTest(mammals$duree_gestation, k = 2, alpha = 0.05)
+rosnerTest(mammals$esperance_vie, k = 2, alpha = 0.05)
+rosnerTest(mammals$poids_cerveau, k = 6, alpha = 0.05)
+rosnerTest(mammals$poids_corporel, k = 6, alpha = 0.05)
+rosnerTest(mammals$poids_corporel, k = 6, alpha = 0.05)
+```
+
+Les valeurs atypiques identifiées concernent principalement de très grands mammifères : éléphants, girafe, gorille, okapi ou cheval. Ces espèces présentent des poids corporels et cérébraux extrêmement élevés, ce qui explique naturellement leur classification comme outliers. Les éléphants ressortent également pour leurs durées de gestation exceptionnellement longues (624–645 jours), cohérentes avec leur taille et leur développement fœtal. Enfin, l’espérance de vie atypique est observée chez l’Homme (100 ans) et l’Éléphant d’Asie (69 ans), reflétant leur longévité exceptionnelle.
+
+***Valeurs atypiques supprimer ou garder ?***
+
+La plupart des valeurs atypiques présentes dans la base sont en réalité biologiquement cohérentes : elles correspondent à des espèces naturellement très grandes ou ayant une gestation longue, et ne constituent donc pas des erreurs. En revanche, deux valeurs d’espérance de vie ressortent comme réellement problématiques. La base indique 100 ans pour l’Homme, alors que l’espérance de vie moyenne réelle est plutôt autour de 70–80 ans, et 69 ans pour l’Éléphant d’Asie, alors que la valeur réelle se situe plutôt entre 48 et 60 ans. Ces deux observations sont donc trop éloignées des valeurs biologiques attendues et risquent de fausser les analyses. Pour cette raison, ce sont les seuls points atypiques que nous avons décidé de supprimer
+
+```{r}
+mammals$esperance_vie[mammals$esperance_vie %in% c(100, 69)] <- NA
+summary(mammals$esperance_vie)
+```
+
+Avant la suppression, les espérances de vie indiquées pour l’Homme (100 ans) et pour l’Éléphant d’Asie (69 ans) tiraient clairement la distribution vers le haut. On le voit dans le résumé statistique : le maximum atteint 100 ans et la moyenne dépasse 20 ans, alors que la plupart des espèces du jeu de données vivent beaucoup moins longtemps. Ces deux valeurs créaient donc un déséquilibre important et donnaient une image faussée de la variabilité réelle de la variable.
+
+Après les avoir retirées, la distribution devient immédiatement plus cohérente avec les connaissances biologiques. Le maximum revient à 50 ans, la moyenne baisse à environ 17,7 ans, et la variable n’est plus étirée artificiellement. Les mesures comme la moyenne ou la médiane décrivent alors beaucoup mieux l’ensemble des espèces étudiées.
+
+Au final, retirer ces deux observations permet d’obtenir une variable plus réaliste, plus stable et plus facile à interpréter pour les analyses qui suivent
+
+
+## 3.3 Analyse bivariée des données
+
+Dans cette section, nous étudions les relations entre les variables quantitatives du jeu de données. Avant de choisir la mesure de corrélation appropriée (Pearson ou Spearman), il est nécessaire de vérifier la normalité des distributions car Pearson est valable uniquement si les deux variables comparées suivent une loi normale. Dans le cas contraire, il faut utiliser Spearman, qui repose sur les rangs et ne suppose aucune normalité.
+
+### 3.3.1 Vérification de la normalité des variables quantitatives
+
+Nous appliquons le test de Shapiro-Wilk sur chaque variable quantitative.
+
+```{r, echo=FALSE}
+res_norm <- sapply(vars_quanti, function(v){
+  shapiro.test(mammals[[v]])$p.value
+})
+
+data.frame(
+  p_value = res_norm,
+  normalite = ifelse(res_norm > 0.05, "normal", "pas normal")
+)
+```
+
+Comme plusieurs variables s’écartent significativement de la normalité, et qu’un seul écart suffit à invalider Pearson, nous utilisons Spearman, robuste aux distributions asymétriques et aux valeurs extrêmes.
+
+### 3.3.2 Analyse bivariée pour deux variables quantitatives
+
+#### Nuage de point
+
+Avant d’interpréter les corrélations, il est utile d’observer graphiquement la forme des relations entre certaines variables particulièrement pertinentes. Les scatterplots ci-dessous illustrent trois associations importantes, accompagnées d’une droite de régression afin de mettre en évidence la tendance générale.
+
+
+```{r, echo=FALSE}
+ggplot(mammals, aes(x = poids_corporel, y = poids_cerveau)) +
+  geom_point(color = "blue", alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  labs(
+    title = "Relation entre le poids du corps et le poids du cerveau",
+    x = "Poids corporel (kg)",
+    y = "Poids du cerveau (g)"
+  ) +
+  theme_minimal()
+
+```
+
+Le nuage de points met en évidence une relation fortement positive entre le poids corporel et le poids du cerveau. Plus les espèces sont lourdes, plus leur cerveau est volumineux, comme l’indique la pente ascendante de la droite de régression.
+
+
+```{r, echo=FALSE}
+ggplot(mammals, aes(x = sommeil_non_paradoxal, y = sommeil_total)) +
+  geom_point(color = "blue", alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  labs(
+    title = "Lien entre le sommeil non paradoxal et le sommeil total",
+    x = "Sommeil non paradoxal (heures)",
+    y = "Sommeil total (heures)"
+  ) +
+  theme_minimal()
+```
+
+On observe une relation presque parfaitement linéaire entre le sommeil non paradoxal et le sommeil total. Cela est logique puisque le sommeil non paradoxal constitue la majeure partie du sommeil total. La droite de tendance suit étroitement les points
+
+
+
+```{r, echo=FALSE}
+
+ggplot(mammals, aes(x = poids_corporel, y = sommeil_total)) +
+  geom_point(color = "blue", alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  labs(
+    title = "Relation entre le poids corporel et le sommeil total",
+    x = "Poids corporel (kg)",
+    y = "Sommeil total (heures)"
+  ) +
+  theme_minimal()
+```
+
+La relation entre le poids du corps et le sommeil total est faiblement négative : les espèces plus lourdes ont tendance à dormir moins longtemps. La pente descendante de la droite de régression illustre cette tendance générale, bien que la dispersion importante des points suggère une forte variabilité inter-espèces
+
+#### Corrélation de Spearman
+
+Pour rappel, étant donné que la majorité des variables quantitatives ne suivent pas une distribution normale, nous utilisons le coefficient de Spearman pour mesurer la force et la direction des associations monotones entre variables.
+
+```{r}
+cor(mammals[, vars_quanti], use = "complete.obs", method = "spearman")
+chart.Correlation(mammals[, vars_quanti], histogram = TRUE, pch = 19, method = "spearman")
+
+```
+
+On voit d’abord que les variables morphologiques sont très fortement associées. Par exemple, le poids du corps et le poids du cerveau sont presque parfaitement corrélés, avec r = 0.95, et on retrouve aussi des corrélations importantes avec la durée de gestation et l’espérance de vie, autour de r = 0.69 à 0.79. Cela montre que ces variables suivent une logique commune : les mammifères plus grands ont généralement un cerveau plus volumineux, une gestation plus longue et vivent plus longtemps.
+
+Les variables du sommeil forment un autre groupe très cohérent. Le sommeil non paradoxal est presque parfaitement lié au sommeil total (r = 0.95), ce qui est logique puisqu’il représente la plus grande partie du sommeil. Le sommeil paradoxal est aussi bien corrélé au sommeil total (r = 0.72), ce qui montre qu’il s’intègre dans une organisation globale du sommeil.
+
+En revanche, les liens entre les variables morphologiques et les variables du sommeil sont plus faibles, et souvent négatifs. Les corrélations se situent généralement entre –0.44 et –0.67, ce qui suggère que les espèces les plus lourdes ou ayant une plus longue gestation ont tendance à dormir moins.
+
+#### Visualisation synthétique : Corrplot
+
+Pour compléter l'annalyse, nous avons réaliser un corrplot pour permettre de visualiser d’un coup d’œil l’intensité et le signe des corrélations.
+
+```{r, echo=FALSE}
+cor_matrix <- cor(mammals[, vars_quanti], use = "complete.obs", method = "spearman")
+
+corrplot(cor_matrix,
+         method = "color",
+         type = "upper",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.cex = 0.8,
+         number.cex = 0.7,
+         col = colorRampPalette(c("blue", "white", "red"))(200))
+```
+
+Le corrplot permet de repérer facilement la manière dont les variables sont liées entre elles. On distingue clairement deux grands ensembles.  
+
+1) Un bloc “morphologie”:   
+Les variables liées à la taille et au développement des animaux (poids du corps, poids du cerveau, durée de gestation, espérance de vie) sont très fortement corrélées entre elles.
+Par exemple, le poids du corps et le poids du cerveau sont presque parfaitement liés (r = 0,97).
+Cela s'explique facilement d’un point de vue biologique : les animaux les plus grands ont généralement un cerveau plus lourd, une gestation plus longue et une espérance de vie plus élevée.  
+ 
+2) Un bloc “sommeil”:    
+Les variables sommeil total, sommeil paradoxal et sommeil non paradoxal forment un second groupe avec des corrélations très fortes.
+Cela est logique : le sommeil total dépend directement de ses deux composantes, et les espèces qui dorment beaucoup ont souvent plus de sommeil paradoxal. 
+
+3) Relations entre morphologie et sommeil:   
+Les corrélations entre les deux blocs sont plutôt négatives et modérées. Autrement dit, les grands animaux ont tendance à dormir moins que les petits, ce qui correspond à ce que l’on retrouve dans plusieurs études biologiques.
+
+### 3.3.3 Analyse bivariée pour deux variables qualitatives
+
+#### Tableau de contingence
+
+***Tableau de contingence : predation x exposition***  
+
+Ce tableau de contingence permet de visualiser la répartition des espèces selon leur niveau de prédation et d’exposition.
+
+```{r}
+table_pred_expo <- table(mammals$predation, mammals$exposition, useNA = "ifany")
+
+kable(table_pred_expo,
+      caption = "Tableau de contingence : Prédation × Exposition",
+      align = "c") %>%
+  kable_styling(full_width = FALSE)
+
+```
+
+On observe que certaines combinaisons de modalités apparaissent plus fréquemment que d’autres. Par exemple, les catégories de prédation 1, 2 et 3 sont bien représentées dans plusieurs niveaux d’exposition, tandis que les catégories plus élevées (comme 4 et 5) sont moins fréquentes et davantage réparties de manière irrégulière.
+
+#### Heatmap
+
+Les heatmaps permettent de visualiser comment se répartissent les effectifs selon les niveaux de prédation, d’exposition et de danger.
+
+```{r, echo=FALSE}
+
+#prédation x exposition
+mammals |>
+  count(predation, exposition) |>
+  ggplot(aes(x = predation, y = exposition, fill = n)) +
+  geom_tile(color = "white") +
+  theme_bw() +
+  labs(
+    title = "Relation entre prédation et exposition",
+    x = "Prédation",
+    y = "Exposition",
+    fill = "Fréquence"
+  )
+
+#prédation x danger
+mammals |>
+  count(predation, danger) |>
+  ggplot(aes(x = predation, y = danger, fill = n)) +
+  geom_tile(color = "white") +
+  theme_bw() +
+  labs(
+    title = "Relation entre prédation et danger",
+    x = "Prédation",
+    y = "Danger",
+    fill = "Fréquence"
+  )
+
+#danger x exposition
+mammals |>
+  count(exposition, danger) |>
+  ggplot(aes(x = exposition, y = danger, fill = n)) +
+  geom_tile(color = "white") +
+  theme_bw() +
+  labs(
+    title = "Relation entre exposition et danger",
+    x = "Exposition",
+    y = "Danger",
+    fill = "Fréquence"
+  )
+```
+
+
+On remarque que certaines combinaisons apparaissent plus souvent que d’autres.
+
+D’abord, on voit que certains niveaux d’exposition sont régulièrement associés à des niveaux particuliers de prédation. Cela laisse penser que l’exposition d’une espèce peut être liée à la probabilité de rencontrer un prédateur.
+
+On observe aussi que les situations avec une exposition élevée sont souvent associées à des niveaux de danger plus importants. Les zones les plus colorées de la heatmap montrent les combinaisons les plus fréquentes.
+
+Enfin, la relation entre prédation et danger semble logique : lorsque la prédation augmente, les niveaux de danger augmentent eux aussi, ce qui confirme une cohérence entre ces deux variables.
+
+Globalement, ces résultats montrent que les trois variables qualitatives ne sont pas réparties au hasard. Elles semblent être liées entre elles, avec certaines combinaisons plus fréquentes que d’autres.
+
+#### Test khi deux
+
+```{r, echo=FALSE}
+# Liste des variables qualitatives
+vars_quali <- c("predation", "exposition", "danger")
+
+# Création du tableau récapitulatif
+chi2_results <- data.frame(
+  var1 = character(),
+  var2 = character(),
+  chi2 = numeric(),
+  df = numeric(),
+  p_value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Boucles pour remplir le tableau
+for(i in 1:(length(vars_quali)-1)){
+  for(j in (i+1):length(vars_quali)){
+    
+    x <- vars_quali[i]
+    y <- vars_quali[j]
+    
+    res <- chisq.test(table(mammals[[x]], mammals[[y]]))
+    
+    chi2_results <- rbind(
+      chi2_results,
+      data.frame(
+        var1 = x,
+        var2 = y,
+        chi2 = round(res$statistic, 3),
+        df = res$parameter,
+        p_value = round(res$p.value, 5)
+      )
+    )
+  }
+}
+
+chi2_results
+
+```
+
+Les tests du Chi² montrent que les trois variables qualitatives sont significativement associées entre elles. Autrement dit, la répartition des niveaux de danger dépend à la fois de la prédation et de l’exposition, ce qui indique que ces variables ne varient pas de manière indépendante dans la population étudiée.
+
+#### Matrice de Cramer's V
+
+```{r, echo=FALSE}
+# Matrice vide
+mat_cramer <- matrix(NA,
+                     nrow = length(vars_quali),
+                     ncol = length(vars_quali),
+                     dimnames = list(vars_quali, vars_quali))
+
+# Remplissage
+for(i in 1:length(vars_quali)){
+  for(j in 1:length(vars_quali)){
+    
+    tbl <- table(mammals[[vars_quali[i]]], mammals[[vars_quali[j]]])
+    
+    # assocstats calcule le chi2 ET Cramer automatiquement
+    mat_cramer[i, j] <- assocstats(tbl)$cramer
+  }
+}
+
+mat_cramer
+```
+La matrice de Cramer’s V montre des associations modérées à fortes entre les variables qualitatives : la relation la plus forte apparaît entre prédation et danger (V = 0.68), suivie de exposition et danger (V = 0.61). L’association entre prédation et exposition est plus modérée (V = 0.44). Ces résultats indiquent que les trois variables sont clairement liées.
+
+### 3.3.4 Analyse bivariée pour une variable quantitative et une qualitative
+
+#### Violin plot
+
+```{r, echo=FALSE}
+
+for (v in vars_quali) {
+    ggp <- ggplot(mammals, aes_string(x = v, y = "sommeil_total", fill = v)) +
+      geom_violin(trim = FALSE, alpha = 0.7) +
+      geom_boxplot(width = 0.1, outlier.shape = NA, alpha = 0.3) +
+      labs(
+        title = paste("Distribution du sommeil total selon", v),
+        x = v,
+        y = "Sommeil total"
+      ) +
+      theme_classic() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+ggp
+```
+
+Le graphique en violon permet d’examiner comment la quantité de sommeil total varie selon les différents niveaux de danger associés aux espèces. Chaque catégorie de danger possède sa propre distribution, ce qui permet de comparer non seulement les médianes (via le boxplot) mais aussi la forme globale des valeurs observées.
+
+On remarque d’abord que les espèces classées dans les niveaux de danger 1 à 3 présentent des durées de sommeil total relativement élevées, avec des médianes situées autour de 11 à 14 heures. Ces groupes montrent également une variabilité importante : les violons sont larges et étendus, ce qui signifie que les valeurs de sommeil diffèrent beaucoup d’une espèce à l’autre au sein d’une même catégorie.
+
+À l’inverse, les espèces appartenant au niveau de danger 5 dorment nettement moins, avec une médiane autour de 5 heures et une dispersion plus faible. Le violon est plus resserré, ce qui indique que ces espèces ont des durées de sommeil plus homogènes, et généralement faibles. Ce contraste suggère qu’un niveau de danger élevé pourrait être associé à un sommeil plus court, possiblement parce que ces espèces doivent rester plus vigilantes dans leur environnement.
+
+Les catégories intermédiaires, notamment le danger 4, se situent entre ces deux extrêmes, avec une médiane autour de 10 heures mais avec une variabilité importante.
+
+Enfin, la présence de quelques valeurs NA est visible grâce à un violon séparé. Leur distribution se rapproche des catégories 2–3, ce qui indique qu’elles ne présentent pas un profil totalement atypique.
+
+Dans l’ensemble, la comparaison visuelle montre qu’il existe une relation entre le niveau de danger et la quantité de sommeil total : les espèces les plus menacées ou les plus exposées semblent dormir moins, tandis que celles dans des situations plus sécurisées ont tendance à dormir davantage. Cette observation devra être confirmée par des tests statistiques adaptés si l’on souhaite établir un lien significatif entre ces deux variables.
+
+#### Statistique ANOVA + Eta² (force de l’association)
+
+Nous testons maintenant si les trois variables ordinales : **prédation**, **exposition** et **danger** influencent la durée totale de sommeil des mammifères. L’objectif est de vérifier si le niveau de risque auquel une espèce est exposée peut expliquer ses habitudes de sommeil.
+
+```{r, echo=FALSE}
+library(DescTools)  # pour etaSquared
+
+# Fonction qui résume p-value et eta² pour une variable qualitative
+resume_anova <- function(var){
+  
+  # Formule dynamique
+  f <- as.formula(paste("sommeil_total ~", var))
+  
+  # ANOVA de Welch (la plus robuste)
+  welch <- oneway.test(f, data = mammals, var.equal = FALSE)
+  
+  # eta² via ANOVA classique (pour la taille d'effet)
+  eta <- etaSquared(aov(f, data = mammals))[1, 1]
+  
+  # Retourne une ligne de tableau
+  data.frame(
+    variable = var,
+    p_value = welch$p.value,
+    eta2 = eta
+  )
+}
+
+# Application aux trois variables qualitatives
+vars_quali <- c("predation", "exposition", "danger")
+
+resultats_quali <- do.call(rbind, lapply(vars_quali, resume_anova))
+
+print(resultats_quali)
+
+```
+
+Les résultats montrent que :
+
+• **La prédation seule n’a pas d’effet significatif** (p ≈ 0,10). Son impact reste modéré (η² ≈ 0,17), ce qui signifie que le simple fait d’avoir des prédateurs ne suffit pas à expliquer combien une espèce dort.
+
+• **L’exposition est le facteur le plus important**, avec une p-value très faible (p < 0,00001) et un effet très fort (η² ≈ 0,50). Les espèces très exposées lorsqu’elles dorment (peu protégées) dorment nettement moins. Ce facteur explique à lui seul environ **50 %** de la variabilité du sommeil total.
+
+• **Le danger global**, qui combine prédation et exposition, a lui aussi un **effet fort et significatif** (p < 0,00001 ; η² ≈ 0,38). Les espèces vivant dans des environnements très risqués ont tendance à réduire leur temps de sommeil.
+
+En résumé, **ce n’est pas la prédation en elle-même qui influence le plus le sommeil, mais surtout la vulnérabilité pendant le sommeil**. L’exposition et le danger sont donc des facteurs écologiques majeurs pour comprendre les différences de sommeil entre espèces.
+
+
+# 4) Traitement des valeurs manquantes
+
+## 4.1 Première visualisation des données manquantes
+
+**Taux de valeurs manquantes par variable**
+
+```{r}
+na_resume <- colSums(is.na(mammals))
+na_percent <- round(na_resume / nrow(mammals) * 100, 2)
+data.frame(Variable = names(mammals), NAs = na_resume, Percent = na_percent)
+
+```
+
+
+L’ensemble des variables présentes dans le jeu de données comporte des valeurs manquantes, avec des proportions très différentes selon les variables. Les variables les plus touchées sont sommeil_non_paradoxal (30,6 %) et sommeil_paradoxal (24,2 %), ce qui peut fortement impacter les analyses sur le sommeil.
+
+Les autres variables présentent des taux plus modérés (entre 4 et 13 %), mais leur traitement reste nécessaire pour conserver un jeu de données complet.
+
+---
+
+**Visualisation**
+
+Ce premier aperçu visuel permet d’identifier rapidement où se situent les valeurs manquantes dans la base.
+```{r, echo=FALSE}
+
+mammals %>% 
+  mutate(observation = row_number()) %>% 
+  gather(variable, value, -observation) %>% 
+  mutate(na_flag = ifelse(is.na(value), 1, 0)) %>% 
+  ggplot(aes(x = variable, y = observation, fill = na_flag)) +
+  geom_tile(color = "white", linewidth = 0.2) +
+  scale_fill_gradient(low = "#e0f3db", high = "#0868ac",
+                      name = "Valeurs\nmanquantes",
+                      breaks = c(0, 1),
+                      labels = c("Présent", "Manquant")) +
+  labs(
+    title = "Heatmap des valeurs manquantes",
+    x = "Variables",
+    y = "Observations"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5)
+  )
+```
+La heatmap ci-dessus montre pour chaque variable quelles observations sont complètes ou manquantes, ce qui nous aide à comprendre la structure des NA avant d’aller plus loin dans l’analyse 
+
+
+
+
+**Analyse des patterns de valeurs manquantes**
+
+```{r, echo=FALSE}
+naniar::gg_miss_upset(
+  mammals,
+  nsets = ncol(mammals),
+  nintersects = 100,
+  sets.bar.color = "blue",
+  main.bar.color = "red",
+)
+```
+
+Le graphique UpSet permet de visualiser non seulement **combien de valeurs manquantes contient chaque variable**, mais aussi **quelles variables manquent simultanément**. C’est une information que l’on ne peut pas observer avec un simple tableau de pourcentages.
+
+On remarque d’abord que **certaines variables présentent davantage de valeurs manquantes que d’autres**. Par exemple, sommeil_non_paradoxal et sommeil_paradoxal comptent chacune 17 valeurs manquantes, ce qui en fait les variables les plus concernées. À l’inverse, les variables comme predation ou poids_corporel ne présentent que **2 à 3 valeurs manquantes**.
+
+Le graphique montre aussi qu’il existe **plusieurs intersections**, c’est-à-dire des cas où des individus présentent des valeurs manquantes dans plusieurs variables en même temps. L’intersection la plus importante regroupe **5 individus** qui manquent simultanément sur plusieurs variables liées au sommeil. D’autres intersections plus modestes (taille = 3 ou 2) indiquent que certaines valeurs manquantes apparaissent ensemble, mais de manière moins fréquente.
+
+Cette organisation n’est pas aléatoire : on observe que les variables du **sommeil** (sommeil total, paradoxal et non paradoxal) manquent souvent chez les **mêmes individus**, ce qui peut indiquer un motif commun, par exemple une difficulté à mesurer ces valeurs pour certaines espèces. Cela suggère que les données manquantes pourraient être liées à la nature des mesures (et non aux caractéristiques des animaux), ce qui est un élément important pour choisir une méthode d’imputation cohérente.
+
+Cette structure des valeurs manquantes justifie pleinement l’utilisation de méthodes d’imputation adaptées, car les NA ne sont pas répartis uniformément dans le jeu de données. Elle nous aide également à choisir des méthodes plus robustes pour les variables du sommeil, qui concentrent la majorité des valeurs manquantes.
+
+
+##  4.2 Étude des valeurs manquantes : faut-il supprimer certaines observations ?
+
+À première vue, on pourrait envisager de supprimer les observations contenant le plus de valeurs manquantes. Toutefois, cette approche n’est pas pertinente dans le cadre de ce jeu de données. Chaque ligne correspond en effet à une espèce distincte : retirer une observation reviendrait donc à éliminer une espèce entière, ce qui réduirait la représentativité biologique du dataset et appauvrirait l’analyse.
+
+Par ailleurs, même lorsqu’une espèce présente plusieurs valeurs manquantes, les informations restantes peuvent être utiles. Elles peuvent contribuer aux méthodes d’imputation, qui s’appuient sur les relations entre variables pour estimer les valeurs absentes. Supprimer ces observations reviendrait à perdre des données potentiellement informatives.
+
+Enfin, l’un des objectifs du projet est précisément de comparer plusieurs méthodes d’imputation. Il est donc cohérent de conserver l’ensemble des observations afin de pouvoir appliquer ces techniques dans des conditions réalistes, y compris en présence de données très incomplètes.
+
+Pour ces raisons, nous choisissons de ne supprimer aucune observation et de travailler sur l’intégralité du jeu de données avant de procéder aux différentes imputations.
+
+##  4.3 Imputations
+
+### a) Imputation par sources externes
+
+La première méthode d’imputation consiste à compléter certaines valeurs manquantes à l’aide d’informations issues de sources externes fiables. Cette approche repose sur l’utilisation de données biologiques déjà documentées, telles que des bases de données zoologiques ou des publications scientifiques, afin de remplacer les valeurs manquantes par des valeurs réelles plutôt que par des estimations statistiques. Lorsque les sources fournissaient un intervalle de valeurs, une valeur unique a été retenue afin de pouvoir compléter le jeu de données. Dans ce cas, la moyenne de l’intervalle a été utilisée, car elle permet de représenter une valeur centrale tout en restant cohérente biologiquement.
+
+Cette méthode est appliquée aux variables poids corporel, poids du cerveau et durée de gestation. Ces variables correspondent à des caractéristiques morphologiques et biologiques propres à chaque espèce, qui présentent de très fortes différences entre les mammifères. L’analyse descriptive a montré que ces variables sont très asymétriques et fortement structurées par l’espèce, ce qui rend les imputations statistiques simples, comme la moyenne ou la médiane, peu pertinentes d’un point de vue biologique.
+
+Le choix d’une imputation à partir de sources externes est donc cohérent pour ces variables, car leurs valeurs ne dépendent pas de l’échantillon étudié mais de caractéristiques biologiques bien établies. Cette approche permet de conserver une variabilité réaliste entre les espèces et de disposer de variables complètes et fiables pour les étapes d’imputation suivantes.    
+
+ 
+ 
+Ce code permet de repérer les espèces présentant des valeurs manquantes pour les variables morphologiques.  
+```{r}
+mammals %>%
+  select(species_fr, poids_corporel, poids_cerveau, duree_gestation) %>%
+  filter(
+    is.na(poids_corporel) |
+    is.na(poids_cerveau) |
+    is.na(duree_gestation)
+  )
+
+```
+
+---
+
+#### Durée de gestation
+
+* **Éléphant d’Afrique** : la durée de gestation est d’environ **22 mois**, soit **660 jours**. Cette valeur est cohérente avec la très grande taille de l’espèce et son développement lent.
+  *Source : Futura Sciences.*
+
+* **Rat de poche africain géant** : la durée de gestation est d’environ **27 jours**, ce qui est cohérent avec le cycle reproductif rapide des petits mammifères.
+  *Source : Kurt Safari.*
+
+* **Hérisson du désert** : la durée de gestation est comprise entre **30 et 47 jours**. La valeur retenue est la **moyenne de l’intervalle**, soit **38,5 jours**, représentative de l’espèce.
+  *Source : reproductiondesherissons.fr.*
+
+* **Genette** : la durée de gestation est d’environ **70 jours**, ce qui correspond à un mammifère de taille intermédiaire.
+  *Source : Diconimoz.*
+
+* **Tatou géant** : la durée de gestation est d’environ **120 jours**, valeur cohérente avec la biologie et le rythme de reproduction de l’espèce.
+  *Source : Wikipédia.*
+
+* **Singe patas** : la durée de gestation est d’environ **5 mois**, soit **150 jours**, ce qui est cohérent avec les durées observées chez des primates de taille comparable.
+  *Source : Rabat Zoo.*
+
+* **Mouton** : la durée de gestation est d’environ **5 mois**, soit **150 jours**, valeur bien documentée chez les ruminants domestiques.
+  *Source : Le Mag des Animaux.*
+
+* **Condylure étoilé** : la durée de gestation est d’environ **45 jours**, valeur cohérente avec la petite taille et le cycle reproductif rapide de l’espèce.
+  *Source : CEAEQ (Québec).*
+
+```{r}
+# Imputation de la durée de gestation (en jours)
+
+mammals_m1 <- mammals
+
+mammals_m1$duree_gestation[mammals_m1$species_fr == "Éléphant d'Afrique"] <- 660
+mammals_m1$duree_gestation[mammals_m1$species_fr == "Rat géant africain à poche"] <- 27
+mammals_m1$duree_gestation[mammals_m1$species_fr == "Hérisson du désert"] <- 38.5
+mammals_m1$duree_gestation[mammals_m1$species_fr == "Genette"] <- 70
+mammals_m1$duree_gestation[mammals_m1$species_fr == "Tatou géant"] <- 120
+mammals_m1$duree_gestation[mammals_m1$species_fr == "Singe patas"] <- 150
+mammals_m1$duree_gestation[mammals_m1$species_fr == "Mouton"] <- 150
+mammals_m1$duree_gestation[mammals_m1$species_fr == "Condylure étoilé"] <- 45
+
+```
+
+---
+
+#### Poids du cerveau
+
+> *Lorsque les sources fournissaient un intervalle de valeurs pour le poids du cerveau, la moyenne a été retenue afin d’obtenir une valeur unique représentative.*
+
+* **Chimpanzé** : le poids du cerveau est compris entre **340 et 370 grammes**. La valeur retenue est la **moyenne**, soit **355 grammes**, cohérente avec les connaissances sur les grands primates.
+  *Source : Hominidés.*
+
+* **Cheval** : le poids du cerveau est d’environ **600 grammes**, valeur cohérente avec la masse corporelle importante de l’animal.
+  *Source : Wikipédia.*
+
+* **Condylure étoilé** : aucune source fiable n’a permis d’identifier le poids du cerveau. Cette valeur a donc été laissée manquante à ce stade et sera complétée par une méthode d’imputation statistique ultérieure.
+
+```{r}
+# Imputation du poids du cerveau (en grammes)
+
+mammals_m1$poids_cerveau[mammals_m1$species_fr == "Chimpanzé"] <- 355
+mammals_m1$poids_cerveau[mammals_m1$species_fr == "Cheval"] <- 600
+
+```
+
+---
+
+#### Poids corporel
+
+> *Pour les variables de poids corporel présentées sous forme d’intervalle, une valeur moyenne a également été retenue afin de représenter une masse corporelle typique de l’espèce.*
+
+* **Âne** : le poids corporel varie entre **200 et 500 kg**. La valeur retenue est la **moyenne**, soit **300 kg**, cohérente avec les données disponibles pour cette espèce domestique.
+  *Source : Umvie.com.*
+
+* **Hamster doré** : le poids corporel varie entre **85 et 150 grammes** selon le sexe. La valeur retenue est la **moyenne**, soit **117,5 grammes**, représentative de l’espèce.
+  *Source : conseils-animaux.fr.*
+
+* **Loup gris** : le poids corporel moyen est d’environ **38 kg**, valeur cohérente avec les données zoologiques disponibles.
+  *Source : Wikipédia.*
+
+```{r}
+# Imputation du poids corporel (en kg)
+
+mammals_m1$poids_corporel[mammals_m1$species_fr == "Âne"] <- 300
+mammals_m1$poids_corporel[mammals_m1$species_fr == "Hamster doré"] <- 0.1175
+mammals_m1$poids_corporel[mammals_m1$species_fr == "Loup gris"] <- 38
+
+```
+
+---
+
+#### Vérification nombre de valeurs manquantes
+
+```{r, echo=FALSE}
+colSums(is.na(mammals_m1[, c(
+  "duree_gestation",
+  "poids_cerveau",
+  "poids_corporel"
+)]))
+
+```
+
+::: callout-warning
+Aucune source fiable n’a permis de déterminer le poids du cerveau du condylure étoilé. Cette valeur est donc laissée manquante à ce stade et sera imputée ultérieurement à l’aide d’une méthode d’imputation multivariée, plus adaptée.
+:::
+
+
+
+### b) Imputation par regression
+
+Certaines variables du jeu de données présentent des liens très forts avec d’autres variables. C’est le cas du sommeil total, qui dépend directement du sommeil non paradoxal et du sommeil paradoxal, ainsi que de l’espérance de vie, qui est liée aux caractéristiques morphologiques des espèces. Ces relations ont été mises en évidence lors de l’analyse descriptive et bivariée.
+
+Pour ces raisons, une imputation par régression a été utilisée pour ces variables. La méthode consiste à estimer un modèle de régression linéaire à partir des observations pour lesquelles toutes les variables sont connues, puis à utiliser ce modèle pour prédire les valeurs manquantes.
+
+Concrètement, une valeur manquante est imputée uniquement lorsque la variable à compléter est absente mais que toutes les variables explicatives nécessaires au modèle sont disponibles. Si plusieurs variables sont manquantes simultanément, aucune imputation n’est réalisée à ce stade.
+
+Cette méthode permet de compléter une partie des valeurs manquantes de manière cohérente. Les valeurs manquantes restantes seront ensuite traitées à l’aide d’une autre méthode d’imputation afin d’obtenir un jeu de données final sans valeurs manquantes.
+
+---
+
+**Variable : sommeil_total**
+```{r}
+mammals_reg <- mammals_m1
+
+data_sleep <- mammals_reg %>%
+  filter(
+    !is.na(sommeil_total),
+    !is.na(sommeil_non_paradoxal),
+    !is.na(sommeil_paradoxal)
+  )
+
+model_sleep <- lm(
+  sommeil_total ~ sommeil_non_paradoxal + sommeil_paradoxal,
+  data = data_sleep
+)
+
+# Indices des valeurs manquantes à imputer
+idx_na_sleep <- which(
+  is.na(mammals_reg$sommeil_total) &
+  complete.cases(
+    mammals_reg[, c("sommeil_non_paradoxal", "sommeil_paradoxal")]
+  )
+)
+
+# Imputation
+mammals_reg$sommeil_total[idx_na_sleep] <-
+  predict(model_sleep, newdata = mammals_reg[idx_na_sleep, ])
+
+```
+
+L’imputation par régression n’a pas permis de compléter toutes les valeurs manquantes de la variable sommeil total. En effet, cette méthode ne peut être appliquée que lorsque les variables explicatives, à savoir le sommeil non paradoxal et le sommeil paradoxal, sont disponibles. Les valeurs restantes, pour lesquelles plusieurs variables sont simultanément manquantes, seront complétées ultérieurement à l’aide d’une autre méthode d’imputation plus adaptée
+
+---
+
+**Variable : esperance_vie**
+```{r}
+
+data_life <- mammals_reg %>%
+  filter(
+    !is.na(esperance_vie),
+    !is.na(poids_corporel),
+    !is.na(poids_cerveau),
+    !is.na(duree_gestation)
+  )
+
+model_life <- lm(
+  log(esperance_vie) ~ log(poids_corporel) + log(poids_cerveau) + log(duree_gestation),
+  data = data_life
+)
+
+# Indices des valeurs manquantes à imputer
+idx_na_life <- which(
+  is.na(mammals_reg$esperance_vie) &
+  !is.na(mammals_reg$poids_corporel) &
+  !is.na(mammals_reg$poids_cerveau) &
+  !is.na(mammals_reg$duree_gestation)
+)
+
+# Imputation
+mammals_reg$esperance_vie[idx_na_life] <-
+  predict(model_life, newdata = mammals_reg[idx_na_life, ])
+
+```
+
+Pour rappel, l’espérance de vie a été complétée à l’aide d’une régression utilisant le poids corporel, le poids du cerveau et la durée de gestation. La prédiction est réalisée uniquement lorsque ces informations sont disponibles. Lorsque ce n’est pas le cas, aucune valeur n’est imputée à ce stade. 
+
+Ainsi, toutes les valeurs manquantes n’ont pas encore été complétées et seront traitées par une autre méthode par la suite.
+
+
+### c) Imputation multivariée {MICE}
+
+Après les imputations par souces externes et par régression, il est nécessaire de voir combien de valeurs manquantes sont toujours présentes pour chaque variable.
+
+```{r}
+colSums(is.na(mammals_reg))
+```
+**Visuellement** 
+
+```{r}
+md.pattern(mammals_reg,rotate.names=TRUE)
+```
+
+Afin de compléter l’ensemble des valeurs manquantes restantes de manière cohérente, nous utilisons une méthode d’imputation multivariée, basée sur l’algorithme mice (Multiple Imputation by Chained Equations). Cette approche consiste à estimer simultanément les valeurs manquantes de plusieurs variables en exploitant l’ensemble des relations observées entre les variables disponibles.
+
+
+Nous utilisons ainsi la fonction {mice} afin de tester différents enchaînements d’imputation et nous générerons cinq versions complètes du jeu de données. 
+
+
+```{r}
+mammals_mice1<-mice(
+mammals_reg,
+m=5
+)
+```
+
+```{r}
+#méthode appliquées
+mammals_mice1$method
+```
+
+
+On peut voir que l’algorithme n’applique pas la même méthode d’imputation selon le type de variable.
+Les variables quantitatives sont imputées avec la méthode pmm (Predictive Mean Matching). Cette approche consiste à chercher des observations qui se ressemblent et à imputer une valeur réellement observée, ce qui permet de conserver la distribution d’origine et d’éviter des valeurs trop artificielles.
+
+Pour les variables ordinales (predation, exposition et danger), MICE utilise la méthode polr, qui est un modèle de régression adapté aux données ordonnées (1 < 2 < 3 < 4 < 5). Cela garantit que l’imputation respecte bien le sens du niveau de risque, ce qui est important pour ce type de variables.
+
+Enfin, certaines variables comme species_fr, poids_corporel, esperance_vie ou duree_gestation n’ont aucune méthode associée (“”), car elles ne contenaient pas de valeurs manquantes au moment où MICE a été appliqué. Elles n’avaient donc pas besoin d’être imputées.
+
+
+---
+
+**Comparaison des versions**
+
+Nous allons maintenant verifier si les différentes imputations faites semblent stables et cohérentes entre elles.
+
+```{r}
+plot(mammals_mice1)
+```
+Les graphiques montrent l’évolution des moyennes et des écart-types pour les différentes versions d’imputation des 5 jeux de données obtenus avec la méthode mice.
+
+Lorsque les courbes de moyennes et d'écart-types sont proches d'une version à l'autre, cela indique que l’imputation est stable et cohérente à travers les différentes versions. En revanche, des différences importantes suggèrent une instabilité dans l’imputation ou un manque d'information suffisant pour estimer correctement les valeurs manquantes.
+
+Nous pouvons constater que certaines variables ont des courbes diffèrentes avec celles des autres imputations, notamment au niveau de l’écart-type, tel est le cas par exemple pour la variable sommeil_non_paradoxal. Cette instabilité dans les imputations pourrait être due à des distributions de données moins prévisibles ou à un fort taux de valeurs manquante. 
+
+Cependant, pour certaines variables, comme danger, les courbes, notamment de moyenne, sont assez bien rapprochées, indiquant une prédiction effectué par {mice} plutôt cohérente avec les valeurs présentes.
+
+**Vérification de la cohérence entre les versions imputées**
+
+```{r}
+imputation1 <- mice::complete(mammals_mice1, 1)
+imputation2 <- mice::complete(mammals_mice1, 2)
+imputation3 <- mice::complete(mammals_mice1, 3)
+imputation4 <- mice::complete(mammals_mice1, 4)
+imputation5 <- mice::complete(mammals_mice1, 5)
+```
+
+
+**Comparaison à partir d’une régression linéaire**
+
+Afin de choisir la meilleure imputation faite par la fonction {mice}, nous avons opté pour le modèle ayant la meilleure qualité de régression linéaire. Pour accomplir cela, nous avons alors crée un modèle de régression linéaire pour chaque imputations faites par mice. Puis, nous avons comparer les résultats.
+
+Afin d’éviter tout problème de multicolinéarité, le choix des variables explicatives s’appuie sur l’analyse de la matrice de corrélation. Les variables fortement corrélées entre elles, telles que les différentes mesures du sommeil ou les variables ordinales, ne sont pas incluses simultanément dans le modèle. Le modèle retenu explique le poids corporel par la durée de gestation, l’espérance de vie et le niveau de danger, variables présentant une corrélation modérée avec la variable expliquée et une faible corrélation entre elles.
+
+
+```{r, echo=FALSE}
+imputation1$danger <- factor(as.character(imputation1$danger),
+                             levels = c("1","2","3","4","5"))
+imputation2$danger <- factor(as.character(imputation2$danger),
+                             levels = c("1","2","3","4","5"))
+imputation3$danger <- factor(as.character(imputation3$danger),
+                             levels = c("1","2","3","4","5"))
+imputation4$danger <- factor(as.character(imputation4$danger),
+                             levels = c("1","2","3","4","5"))
+imputation5$danger <- factor(as.character(imputation5$danger),
+                             levels = c("1","2","3","4","5"))
+```
+
+
+```{r}
+modele1 <- lm(
+  log(poids_corporel) ~ log(esperance_vie) + log(duree_gestation) + danger,
+  data = imputation1
+)
+
+modele2 <- lm(
+   log(poids_corporel) ~ log(esperance_vie) + log(duree_gestation) + danger,
+  data = imputation2
+)
+
+modele3 <- lm(
+   log(poids_corporel) ~ log(esperance_vie) + log(duree_gestation) + danger,
+  data = imputation3
+)
+
+modele4 <- lm(
+   log(poids_corporel) ~ log(esperance_vie) + log(duree_gestation) + danger,
+  data = imputation4
+)
+
+modele5 <- lm(
+   log(poids_corporel) ~ log(esperance_vie) + log(duree_gestation) + danger,
+  data = imputation5
+)
+
+```
+
+
+```{r}
+table_r2 <- data.frame(
+  Imputation = paste0("Imputation_", 1:5),
+  R2 = c(
+    summary(modele1)$r.squared,
+    summary(modele2)$r.squared,
+    summary(modele3)$r.squared,
+    summary(modele4)$r.squared,
+    summary(modele5)$r.squared
+  )
+)
+
+table_r2
+
+```
+
+Bien que les cinq imputations présentent des qualités d’ajustement très similaires, l’imputation 3 affiche le R² légèrement le plus élevé. Toutefois, les différences restant marginales, l’analyse finale repose sur la combinaison des résultats issus de l’ensemble des imputations
+
+**Choix de l’imputation** 
+
+Nous effectuons donc à présent l’imputation en choisissant l’itération numéro 4.
+
+```{r}
+mammals_complet <- mice::complete(mammals_mice1, 3)
+summary(mammals_complet)
+```
+
+
+**Verification finale du nombre de valeurs manquantes** 
+
+```{r, echo=FALSE}
+colSums(is.na(mammals_complet))
+```
+Ainsi, toutes les variables ont été entièrement imputées, ce qui valide l’efficacité technique des trois méthodes. 
+
+
+## 4.4 Comparaison, validation et analyse des imputations
+ 
+Dans cette partie, nous évaluons les différentes méthodes utilisées. L’objectif est de vérifier si ces méthodes produisent des valeurs raisonnables. Pour cela, nous comparons les valeurs imputées aux valeurs observées, nous mesurons les erreurs d’imputation, et nous vérifions que les résultats restent cohérents sur le plan biologique. Nous regardons aussi si les statistiques descriptives et les relations entre variables restent stables après imputation. Enfin, nous discutons des différences entre les méthodes. 
+
+
+### 4.4.1 Comparaison visuelle avant et apès imputation
+
+L’objectif de cette section est d’observer visuellement l’impact des différentes méthodes d’imputation sur la distribution des variables. Une imputation appropriée doit permettre de compléter les valeurs manquantes sans modifier la forme générale de la distribution initiale.    
+
+Afin d’illustrer ces effets, une variable a été sélectionnée pour chaque méthode : la durée de gestation pour l’imputation à partir de sources externes, le sommeil total pour l’imputation par régression, et le niveau de prédation pour l’imputation multivariée. Les distributions avant et après imputation sont ensuite comparées à l’aide de graphiques.
+
+---
+
+**Distribution de la durée de gestation avant et après imputations par sources externes**
+
+```{r, echo=FALSE}
+
+par(mfrow = c(1, 2))
+
+hist(mammals_original$duree_gestation,
+     main = "Avant imputation\nDurée de gestation",
+     xlab = "Jours",
+     col = "grey",
+     border = "white")
+
+hist(mammals_complet$duree_gestation,
+     main = "Après imputation\nDurée de gestation",
+     xlab = "Jours",
+     col = "pink",
+     border = "white")
+
+
+```
+Les deux graphiques montrent des distributions très proches de la durée de gestation avant et après imputation. Dans les deux cas, la majorité des observations se concentre sur des durées inférieures à 200 jours, ce qui indique que les faibles durées de gestation restent largement dominantes. Les valeurs plus élevées, autour de 400 à 600 jours, sont présentes dans les deux distributions et restent peu nombreuses.
+
+Après imputation, on observe une légère augmentation du nombre total d’observations, ce qui était attendu puisque les valeurs manquantes ont été complétées. Toutefois, la forme générale de la distribution est conservée : il n’apparaît ni pic artificiel ni modification notable de l’étalement des données.
+
+Ces résultats suggèrent que l’imputation a respecté la structure initiale de la variable durée de gestation et n’a pas introduit de biais visible dans sa distribution.
+
+---
+
+**Distribution de la durée du sommeil total avant et après imputations par régression**
+
+```{r, echo= FALSE}
+par(mfrow = c(1, 2))
+
+hist(mammals_original$sommeil_total,
+     main = "Avant imputation\nSommeil total",
+     xlab = "Heures",
+     col = "grey",
+     border = "white")
+
+hist(mammals_complet$sommeil_total,
+     main = "Après imputation \nSommeil total",
+     xlab = "Heures",
+     col = "lightgreen",
+     border = "white")
+
+
+```
+Avant et après imputation, la distribution du sommeil total reste globalement similaire. La majorité des observations se situe entre environ 8 et 12 heures dans les deux cas. Après imputation, on observe une légère augmentation des faibles durées de sommeil et une légère baisse des durées intermédiaires, mais l’étendue des valeurs reste la même. Cela montre que l’imputation a complété les données sans modifier de manière importante la distribution du sommeil total.
+
+---
+
+**Distribution niveau de prédation avant et après imputations multiples**
+
+```{r, echo=FALSE}
+par(mfrow = c(1, 2))
+
+# Avant imputation (base avec NA artificiels)
+prop_avant <- prop.table(table(mammals_original$predation))
+
+# Après imputation (base finale)
+prop_apres <- prop.table(table(mammals_complet$predation))
+
+barplot(
+  prop_avant,
+  main = "Avant imputation\nPrédation",
+  ylab = "Proportion",
+  col = "grey"
+)
+
+barplot(
+  prop_apres,
+  main = "Après imputation\nPrédation",
+  ylab = "Proportion",
+  col = "orange"
+)
+
+
+```
+
+Avant imputation, les niveaux de prédation 1 et 2 représentent chacun environ 22–25 % des observations, le niveau 3 autour de 18–20 %, le niveau 4 environ 10–12 % et le niveau 5 près de 22 %. Après imputation multiple, ces proportions restent **très** proches, avec des écarts de quelques points de pourcentage au maximum.
+**L’imputation multiple n’a donc pas modifié la distribution de la variable prédation.**
+
+---
+
+**Conclusion**     
+Dans l’ensemble, les comparaisons visuelles montrent que les différentes méthodes d’imputation complètent les valeurs manquantes sans modifier de manière significative la forme des distributions initiales, ce qui suggère que les méthodes choisies sont adaptées aux variables étudiées
+
+
+### 4.4.2 Comparaison des valeurs réelles et imputées
+
+Après avoir analysé l’effet global des imputations sur la distribution des variables, il est nécessaire d’évaluer plus précisément la qualité des valeurs imputées. Cette analyse repose sur la comparaison entre les valeurs imputées et les valeurs réellement observées, **lorsque celles-ci sont disponibles**. Elle permet de mesurer dans quelle mesure les méthodes d’imputation parviennent à restituer correctement l’information manquante et d’identifier d’éventuels écarts systématiques.
+
+Comme seules les valeurs réellement observées permettent une comparaison directe, l’évaluation est réalisée uniquement sur les observations rendues manquantes artificiellement. Pour chaque variable, trois indicateurs sont calculés :  
+– l’erreur absolue moyenne (MAE), qui mesure l’écart moyen entre la valeur imputée et la valeur réelle ;  
+– l’erreur quadratique moyenne (RMSE), qui accorde un poids plus important aux grandes erreurs et permet de détecter des écarts importants ;  
+– le biais moyen, défini comme la moyenne des différences entre les valeurs imputées et les valeurs réelles, qui indique si la méthode tend à surestimer ou sous-estimer les valeurs. 
+
+
+#### a) Imputation par sources externes 
+
+Dans un premier temps, une comparaison détaillée est réalisée pour chaque variable imputée grace aux sources externes. Le tableau permet d’observer, espèce par espèce, l’écart entre la valeur imputée et la valeur réelle.
+
+```{r, echo=FALSE}
+compare_methode1 <- function(varname, n = 10) {
+
+  # Indices des valeurs supprimées artificiellement
+  idx <- is.na(mammals[[varname]]) &
+         !is.na(mammals_original[[varname]])
+
+  data.frame(
+    species = mammals_original$species_fr[idx],
+    Valeur_reelle = mammals_original[[varname]][idx],
+    Valeur_imputee = mammals_m1[[varname]][idx],
+    Difference = mammals_m1[[varname]][idx] -
+                 mammals_original[[varname]][idx]
+  )[1:n, ]
+}
+
+```
+
+---
+
+**Durée de gestation**
+```{r, echo=FALSE}
+compare_methode1("duree_gestation", n = 4)
+```
+L’imputation de la durée de gestation donne de bons résultats. Les valeurs imputées sont proches des valeurs réelles pour toutes les espèces concernées. Les différences observées restent relativement faibles, comprises entre −20 et +15 jours, alors que la durée de gestation peut varier de quelques dizaines de jours à plus de 600 jours selon les espèces. Ces écarts représentent donc une petite part de la valeur réelle.
+
+De plus, les valeurs imputées respectent les différences biologiques attendues entre les espèces : les grandes espèces conservent des durées de gestation élevées, tandis que les espèces plus petites présentent des durées plus courtes. Il n’y a pas de valeur aberrante ni de incohérence évidente introduite par l’imputation.
+
+---
+
+**Poids corporel**
+```{r, echo=FALSE}
+compare_methode1("poids_corporel", n = 3)
+
+```
+
+L’imputation du poids corporel est plus complexe que celle de la durée de gestation, en raison des différences très importantes de masse entre les espèces. Pour certaines espèces, comme le hamster doré et le loup gris, les valeurs imputées sont très proches des valeurs réelles, avec des écarts faibles. 
+
+En revanche, pour l’âne, la valeur imputée est nettement plus élevée que la valeur réelle observée, avec un écart important.Cette différence s’explique par le fait que la valeur imputée correspond à une estimation moyenne pour l’espèce, qui ne tient pas compte des variations individuelles possibles. Malgré cet écart, la valeur imputée reste cohérente avec les ordres de grandeur attendus pour l’espèce et ne constitue pas une valeur aberrante. 
+
+---
+
+**Poids cerveau**
+```{r, echo=FALSE}
+compare_methode1("poids_cerveau", n = 2)
+```
+
+Pour le poids du cerveau, les valeurs imputées sont inférieures aux valeurs réelles pour les deux espèces concernées, les écarts observés sont de −85 g pour le chimpanzé et de −55 g pour le cheval. Ces différences restent toutefois limitées par rapport aux ordres de grandeur du poids du cerveau chez ces espèces.
+
+Cette sous-estimation s’explique aussi par le fait que les valeurs imputées correspondent à des estimations moyennes, qui ne prennent pas en compte les différences individuelles ou les conditions spécifiques de mesure. Malgré ces écarts, les valeurs imputées restent réalistes et cohérentes avec les caractéristiques biologiques des espèces considérées.
+
+---
+
+**Qualité des imputations**  
+
+Afin de résumer la performance globale de l’imputation, des indicateurs d’erreur sont calculés pour chaque variable imputée.
+
+```{r, echo=FALSE}
+# Variables imputées par la méthode 1
+vars_m1 <- c(
+  "duree_gestation",
+  "poids_corporel",
+  "poids_cerveau"
+)
+
+resume_methode_b <- do.call(
+  rbind,
+  lapply(vars_m1, function(v){
+
+    # Indices des valeurs rendues manquantes artificiellement
+    idx <- is.na(mammals[[v]]) &
+           !is.na(mammals_original[[v]])
+
+    # Différences entre valeurs imputées et valeurs réelles
+    diff1 <- mammals_m1[[v]][idx] -
+            mammals_original[[v]][idx]
+
+    data.frame(
+      Variable = v,
+      MAE = mean(abs(diff1)),
+      RMSE = sqrt(mean(diff1^2)),
+      Biais_moyen = mean(diff1)
+    )
+  })
+)
+
+resume_methode_b
+
+```
+
+Les indicateurs d’erreur confirment que la méthode 1 est particulièrement performante pour la durée de gestation : en moyenne, l’erreur est d’environ 13 jours, ce qui est faible au regard de durées pouvant dépasser 600 jours. Le biais moyen est proche de zéro (environ –5 jours), indiquant l’absence de décalage important.
+
+Pour le poids corporel, l’erreur moyenne est plus élevée, autour de 38 kg, avec un biais positif du même ordre, traduisant une tendance à surestimer le poids. Ces écarts restent toutefois raisonnables au regard de masses pouvant varier de moins de 1 kg à plusieurs centaines de kilogrammes.
+
+Enfin, pour le poids du cerveau, certaines observations restent manquantes car il n’a pas été possible d’imputer une valeur pour le condylure étoilé. En l’absence de valeur imputée pour cette espèce, les indicateurs d’erreur ne peuvent pas être calculés et apparaissent donc comme manquants
+
+Dans l’ensemble, cette première méthode permet de restituer correctement les ordres de grandeur des variables, avec de très bonnes performances pour la durée de gestation et des résultats plus approximatifs pour les variables présentant une forte variabilité entre espèces.
+
+
+#### b) Imputation par régression 
+
+Dans un premier temps, une comparaison détaillée est réalisée pour chaque variable imputée par régression. Ce tableau permet d’observer, espèce par espèce, l’écart entre la valeur imputée et la valeur réelle.
+
+```{r, echo=FALSE}
+# Variables imputées par régression
+vars_reg <- c("sommeil_total", "esperance_vie")
+
+details_regression <- do.call(
+  rbind,
+  lapply(vars_reg, function(v){
+
+    idx <- is.na(mammals[[v]]) &
+           !is.na(mammals_original[[v]])
+
+    data.frame(
+      Variable = v,
+      species = mammals_original$species_fr[idx],
+      Valeur_reelle  = mammals_original[[v]][idx],
+      Valeur_imputee = mammals_reg[[v]][idx],
+      Difference = mammals_reg[[v]][idx] -
+                   mammals_original[[v]][idx]
+    )
+  })
+)
+
+details_regression <- details_regression[!is.na(details_regression$Valeur_imputee), ]
+
+details_regression$Difference <- round(details_regression$Difference, 3)
+
+details_regression
+
+```
+
+Pour la variable sommeil total, les valeurs imputées sont strictement identiques aux valeurs réelles pour les espèces concernées. Par exemple, pour le daman des rochers, la valeur réelle est de 6,6 heures et la valeur imputée est également de 6,6 heures. De même, pour l’opossum aquatique, la valeur réelle et la valeur imputée sont toutes deux égales à 19,4 heures. L’écart est donc nul, ce qui indique une imputation parfaitement cohérente pour ces observations.
+
+Pour la variable espérance de vie, les écarts sont plus importants. Pour la musaraigne musquée, la valeur réelle est de 2 ans, tandis que la valeur imputée est de 11,9 ans, soit une surestimation d’environ +9,9 ans. À l’inverse, pour le cochon, l’espérance de vie réelle est de 27 ans, contre 16,2 ans après imputation, ce qui correspond à une sous-estimation d’environ −10,8 ans.
+
+Ces résultats montrent que la méthode par régression est très efficace lorsque la relation entre la variable imputée et les variables explicatives est forte, comme pour le sommeil total. En revanche, pour l’espérance de vie, les écarts plus élevés indiquent que la régression est plus sensible au choix et à la disponibilité des variables explicatives, ce qui peut conduire à des erreurs importantes pour certaines espèces
+
+----
+
+**Qualité des imputations**
+
+```{r, echo=FALSE}
+# Variables imputées par régression
+vars_reg <- c("sommeil_total", "esperance_vie")
+
+resume_regression <- do.call(
+  rbind,
+  lapply(vars_reg, function(v){
+
+    # Indices des valeurs rendues manquantes artificiellement
+    idx <- is.na(mammals[[v]]) &
+           !is.na(mammals_original[[v]])
+
+    # Différences entre imputé et réel
+    diff <- mammals_reg[[v]][idx] -
+            mammals_original[[v]][idx]
+
+    data.frame(
+      Variable = v,
+      MAE = mean(abs(diff)),
+      RMSE = sqrt(mean(diff^2)),
+      Biais_moyen = mean(diff)
+    )
+  })
+)
+
+resume_regression
+
+
+```
+L’évaluation de l’imputation par régression linéaire montre des erreurs relativement élevées pour la variable espérance de vie, avec une MAE d’environ 60 et un RMSE proche de 94. De plus, le biais moyen positif indique une surestimation systématique des valeurs imputées. Ces résultats suggèrent que, bien que l’imputation capte la tendance générale, elle reste imparfaite et doit être interprétée avec prudence.
+
+Pour la variable sommeil total, certaines valeurs rendues manquantes artificiellement n’ont pas pu être imputées par la régression, car une ou plusieurs variables explicatives nécessaires au modèle étaient également manquantes. En présence de ces valeurs non imputées, les indicateurs d’erreur ne peuvent pas être calculés, ce qui explique la présence de valeurs manquantes dans le tableau.
+
+----
+
+En complément des indicateurs numériques, un nuage de points est utilisé pour les deux variables imputées par régression. Ce graphique permet de visualiser la proximité entre les valeurs réelles et les valeurs imputées.
+
+```{r, echo=FALSE}
+
+# On réserve plus de place en bas
+par(
+  mfrow = c(1, length(vars_reg)),
+  mar = c(5, 4, 3, 2),   # marges des graphiques
+  oma = c(5, 0, 0, 0)   # marge externe en bas pour la légende
+)
+
+for (v in vars_reg) {
+
+  idx <- is.na(mammals[[v]]) &
+         !is.na(mammals_original[[v]])
+
+  plot(
+    mammals_original[[v]][idx],
+    mammals_reg[[v]][idx],
+    xlab = paste(v, "réel"),
+    ylab = paste(v, "imputé"),
+    main = paste("réel vs imputé"),
+    pch = 19,
+    col = "blue"
+  )
+
+  abline(0, 1, col = "red", lty = 2)
+}
+
+mtext(
+  "Points bleus : valeurs imputées    |    Droite rouge : valeurs réelles",
+  side = 1,
+  outer = TRUE,
+  line = 2,
+  cex = 0.9
+)
+
+# Réinitialisation
+par(mfrow = c(1,1))
+
+```
+Pour le sommeil total, les points sont situés directement sur la droite rouge, ce qui confirme une imputation quasi parfaite. Pour l’espérance de vie, les points sont plus éloignés de la droite, ce qui traduit des écarts plus importants entre valeurs réelles et imputées. Ces graphiques confirment que la régression est très fiable pour le sommeil total, mais plus approximative pour l’espérance de vie
+
+#### c) Imputation multivariée {MICE}
+
+Pour évaluer spécifiquement l’impact de l’imputation MICE, nous comparons les valeurs obtenues après MICE avec celles de la base obtenue **après les méthodes précédentes**, afin de bien mesurer ce que cette dernière étape d’imputation a apporté.
+ 
+##### Comparaison des statistiques descriptives 
+
+Dans un premier temps, nous comparons les statistiques descriptives des variables imputées avant et après imputation multiple. 
+
+```{r, echo=FALSE}
+# Variables concernées par l'imputation multiple
+vars_mice_only <- c(
+  "sommeil_total",
+  "sommeil_non_paradoxal",
+  "sommeil_paradoxal",
+  "predation",
+  "exposition",
+  "danger",
+  "poids_cerveau"
+)
+
+# Statistiques descriptives avant imputation multiple
+summary_avant_mice <- summary(mammals_reg[, vars_mice_only])
+
+# Statistiques descriptives après imputation multiple
+summary_apres_mice <- summary(mammals_complet[, vars_mice_only])
+
+summary_avant_mice
+summary_apres_mice
+
+```
+
+Après imputation, toutes les valeurs manquantes ont été complétées. Les statistiques descriptives restent toutefois proches de celles observées avant imputation. Par exemple, la moyenne du sommeil total passe de 10,42 heures à 9,82 heures, tandis que la médiane reste proche de 10 heures. La proximité entre la moyenne et la médiane suggère une distribution globalement symétrique, indiquant une légère baisse du niveau moyen de sommeil sans modification importante de la forme de la distribution. Le sommeil non paradoxal voit sa moyenne passer de 8,56 à 7 heures, avec une médiane également proche de la moyenne, ce qui traduit une distribution relativement symétrique malgré la diminution observée. Le sommeil paradoxal reste quant à lui très stable, avec une moyenne et une médiane proches de 2 heures, confirmant une distribution peu asymétrique.
+
+Pour les variables ordinales, les répartitions par niveau évoluent légèrement après imputation. La variable prédation conserve une structure similaire, avec des effectifs proches dans chaque catégorie, ce qui indique une stabilité de la distribution. L’exposition et le danger présentent également de faibles ajustements entre les niveaux, sans apparition de déséquilibre marqué, suggérant que l’imputation n’a pas modifié la hiérarchie des niveaux de risque.
+
+Enfin, pour le poids du cerveau, la distribution demeure fortement asymétrique après imputation. La moyenne reste largement supérieure à la médiane, ce qui traduit une asymétrie à droite liée à la présence de valeurs extrêmes. La médiane augmente légèrement, passant de 17,5 à 19,25, tandis que la moyenne évolue peu, de 285 à 288, et que le maximum reste inchangé à 5712. Cela suggère que les valeurs imputées s’intègrent à la distribution existante sans accentuer l’asymétrie ni créer de nouvelles valeurs extrêmes.
+
+Globalement, les différences observées après imputation restent **faibles par rapport à l’échelle des variables étudiées**. En effet, l’imputation a permis de compléter les valeurs manquantes sans modifier **de manière significative** les principales caractéristiques statistiques des variables. Les moyennes, médianes et quartiles restent proches avant et après imputation.
+
+##### Comparaison des distributions (visualisation)
+
+Afin de compléter l’analyse descriptive, nous comparons visuellement les distributions de certaines variables avant et après imputation multiple. Une bonne imputation doit conserver la forme générale de la distribution.
+
+```{r, echo=FALSE}
+par(mfrow = c(1, 2))
+
+hist(
+  mammals_reg$sommeil_paradoxal,
+  main = "Avant imputation multiple\nSommeil paradoxal",
+  col = "grey",
+  border = "white",
+  xlab = "Heures"
+)
+
+hist(
+  mammals_complet$sommeil_paradoxal,
+  main = "Après imputation multiple\nSommeil paradoxal",
+  col = "purple",
+  border = "white",
+  xlab = "Heures"
+)
+
+par(mfrow = c(1, 1))
+
+```
+Avant imputation, le sommeil paradoxal est principalement concentré entre 0 et 2 heures, avec une distribution asymétrique à droite et quelques valeurs plus élevées allant jusqu’à 6–7 heures, mais peu fréquentes.
+
+Après imputation multiple, la forme générale de la distribution reste la même : la majorité des observations se situe toujours entre 0 et 2 heures, l’asymétrie à droite est conservée et les valeurs élevées restent rares. La différence visible provient surtout de l’augmentation du nombre total d’observations après imputation, ce qui accroît mécaniquement les effectifs dans les classes déjà les plus fréquentes, sans modifier la structure globale de la distribution.
+
+
+Ainsi, l’imputation multiple n’a pas changé la forme du sommeil paradoxal ; elle a surtout renforcé les zones déjà denses de la distribution, sans créer de nouvelles valeurs extrêmes ni déplacer la distribution.
+
+```{r, echo=FALSE}
+# Mise en page : 1 ligne, 2 graphiques
+par(mfrow = c(1, 2))
+
+# -----------------------------
+# AVANT IMPUTATION
+# -----------------------------
+prop_avant <- prop.table(table(mammals_reg$exposition))
+
+barplot(
+  prop_avant,
+  main = "Avant imputation multiple\nExposition",
+  col = "grey",
+  border = "white",
+  ylim = c(0, max(prop_avant) + 0.05),
+  ylab = "Proportion",
+  xlab = "Niveau d'exposition"
+)
+
+# -----------------------------
+# APRÈS IMPUTATION
+# -----------------------------
+prop_apres <- prop.table(table(mammals_complet$exposition))
+
+barplot(
+  prop_apres,
+  main = "Après imputation multiple\nExposition",
+  col = "purple",
+  border = "white",
+  ylim = c(0, max(prop_apres) + 0.05),
+  ylab = "Proportion",
+  xlab = "Niveau d'exposition"
+)
+
+# Retour à la mise en page normale
+par(mfrow = c(1, 1))
+
+```
+Concernant la variable exposition, la répartition des niveaux avant imputation montre une dominance du niveau 1, suivie des niveaux 2 et 5, tandis que les niveaux intermédiaires sont moins fréquents. Après imputation multiple, les proportions par niveau restent proches de celles observées initialement. La hiérarchie des niveaux est conservée et aucun déséquilibre majeur n’apparaît.
+
+##### Comparaison des corrélations avant / après imputation multiple
+
+Une étape essentielle consiste à vérifier si les relations entre variables sont préservées après imputation. Pour cela, nous comparons les matrices de corrélation avant et après imputation multiple à l’aide de corrélations de Spearman, adaptées aux variables ordinales.
+
+
+**Préparation des données pour les corrélations**
+
+Les variables ordinales sont converties en scores numériques afin de permettre le calcul des corrélations, tout en respectant leur ordre.
+
+```{r, echo=FALSE}
+# Création de copies temporaires
+mice_avant_corr <- mammals_reg[, vars_mice_only]
+mice_apres_corr <- mammals_complet[, vars_mice_only]
+
+# Variables ordinales
+ord_vars <- c("predation", "exposition", "danger")
+
+mice_avant_corr[ord_vars] <- lapply(mice_avant_corr[ord_vars], function(x)
+  as.numeric(as.character(x))
+)
+
+mice_apres_corr[ord_vars] <- lapply(mice_apres_corr[ord_vars], function(x)
+  as.numeric(as.character(x))
+)
+
+```
+
+
+```{r, echo=FALSE}
+# Corrélations de Spearman
+cor_avant_mice <- cor(
+  mice_avant_corr,
+  method = "spearman",
+  use = "pairwise.complete.obs"
+)
+
+cor_apres_mice <- cor(
+  mice_apres_corr,
+  method = "spearman"
+)
+
+# Conversion en pourcentage pour l'affichage
+cor_avant_pct <- round(cor_avant_mice * 100, 0)
+cor_apres_pct <- round(cor_apres_mice * 100, 0)
+
+# Affichage des corrplots
+
+corrplot(
+  cor_avant_mice,
+  method = "color",
+  addCoef.col = "black",
+  number.cex = 0.6,      # taille du texte (petit)
+  tl.cex = 0.8,
+  title = "Avant imputation multiple",
+  mar = c(0, 0, 2, 0),
+  cl.cex = 0.8
+)
+
+
+```
+
+```{r, echo=FALSE}
+corrplot(
+  cor_apres_mice,
+  method = "color",
+  addCoef.col = "black",
+  number.cex = 0.6,
+  tl.cex = 0.8,
+  title = "Après imputation multiple",
+  mar = c(0, 0, 2, 0),
+  cl.cex = 0.8
+)
+
+
+```
+
+
+Les matrices de corrélation montrent que l’imputation multiple préserve globalement la structure des relations entre les variables. Avant imputation, les différentes composantes du sommeil sont fortement corrélées entre elles, notamment le sommeil total avec le sommeil non paradoxal (corrélation proche de 0,96) et avec le sommeil paradoxal (environ 0,74). Après imputation, ces corrélations restent positives mais leur intensité diminue légèrement, avec des valeurs autour de 0,68 et 0,50 respectivement, indiquant une atténuation des liens sans changement de sens.
+
+Les relations entre le sommeil et les variables de risque écologique demeurent également cohérentes après imputation. Les corrélations négatives observées avant imputation entre le sommeil, en particulier le sommeil paradoxal, et l’exposition ou le danger (jusqu’à −0,75 et −0,66) restent négatives après imputation, bien que légèrement plus faibles (environ −0,48 et −0,39). Cela suggère que les espèces exposées à un risque plus élevé tendent toujours à présenter des durées de sommeil plus faibles.
+
+Enfin, les variables de risque restent fortement corrélées entre elles avant et après imputation, comme l’illustre la corrélation élevée entre la prédation et le danger, qui demeure supérieure à 0,85 après imputation. Les relations entre le poids du cerveau et les variables de sommeil restent quant à elles négatives et d’amplitude comparable. Dans l’ensemble, l’imputation multiple entraîne une légère réduction de l’intensité de certaines corrélations, mais conserve la cohérence et le sens des relations observées initialement, ce qui confirme la pertinence de la procédure d’imputation.
+
+---
+
+**Conclusion**
+
+L’imputation multiple permet de compléter le jeu de données sans modifier la structure **générale** des variables. Les distributions avant et après imputation restent proches.
+
+Les corrélations entre variables sont **globalement** conservées, tant en intensité qu’en direction, ce qui indique que les relations biologiques ne sont pas artificiellement modifiées.
+
+
+
+## 4.5. Impact des imputations sur les analyses statistiques
+
+L’objectif de cette section est d’évaluer l’impact global de **l’ensemble des méthodes d’imputation** mises en œuvre dans ce projet sur les analyses statistiques finales. Après avoir étudié séparément les effets des différentes méthodes d’imputation, il est important de vérifier que, **prises ensemble**, ces procédures n’ont pas modifié les relations statistiques fondamentales du jeu de données.
+
+Cette section ne vise donc pas à comparer une méthode spécifique, mais à valider que le jeu de données final **entièrement imputé** conserve la structure statistique observée dans les données initiales et reste cohérent pour l’analyse biologique.
+
+
+#### 4.5.1 Analyse des corrélations avant / après imputation
+
+Afin d’évaluer si la structure globale des relations entre variables est préservée après **l’ensemble des imputations**, nous comparons les matrices de corrélation calculées sur les données initiales et sur le jeu de données final entièrement complété. Cette approche permet d’avoir une vision synthétique de l’impact global du traitement des valeurs manquantes sur les dépendances entre variables.
+
+```{r, echo=FALSE}
+vars_corr <- c(
+  "poids_corporel",
+  "poids_cerveau",
+  "duree_gestation",
+  "sommeil_total",
+  "sommeil_non_paradoxal",
+  "sommeil_paradoxal",
+  "esperance_vie",
+  "predation",
+  "exposition",
+  "danger"
+)
+
+# Données avant et après imputation
+data_avant <- mammals_original[, vars_corr]
+data_apres <- mammals_complet[, vars_corr]
+
+# Conversion en numérique (variables ordinales incluses)
+data_avant <- as.data.frame(lapply(data_avant, as.numeric))
+data_apres <- as.data.frame(lapply(data_apres, as.numeric))
+
+# Corrélations de Spearman
+cor_avant <- cor(
+  data_avant,
+  method = "spearman",
+  use = "pairwise.complete.obs"
+)
+
+cor_apres <- cor(
+  data_apres,
+  method = "spearman",
+  use = "complete.obs"
+)
+
+```
+
+
+
+```{r, echo=FALSE}
+
+par(mar = c(1, 1, 4, 1))
+
+# Avant imputation
+corrplot(
+  cor_avant,
+  method = "color",
+  type = "upper",
+  col = colorRampPalette(c("#2166AC", "white", "#B2182B"))(200),
+  tl.cex = 0.7,
+  addCoef.col = "black",
+  number.cex = 0.6
+)
+
+mtext("Avant imputation", side = 3, line = 2, cex = 1.2, font = 2)
+
+# Réinitialiser les marges
+par(mar = c(5, 4, 4, 2))
+```
+
+
+```{r, echo=FALSE}
+
+par(mar = c(1, 1, 4, 1))
+
+# Après imputation
+corrplot(
+  cor_apres,
+  method = "color",
+  type = "upper",
+  col = colorRampPalette(c("#2166AC", "white", "#B2182B"))(200),
+  tl.cex = 0.7,
+  addCoef.col = "black",
+  number.cex = 0.6
+)
+
+mtext("Après imputation", side = 3, line = 2, cex = 1.2, font = 2)
+
+par(mar = c(5, 4, 4, 2))
+```
+
+La comparaison des matrices de corrélation avant imputation et après application des différentes méthodes d’imputation montre que la structure globale des relations entre les variables est largement conservée. Les corrélations fortes observées avant imputation, notamment entre le poids corporel et le poids du cerveau, restent élevées après imputation, avec des valeurs qui passent d’environ 0,95 avant imputation à des niveaux proches de 0,88. De la même manière, les relations entre les variables de risque écologique demeurent marquées, la corrélation entre la prédation et le danger restant élevée après imputation, autour de 0,85, contre environ 0,92 avant imputation.
+
+Par ailleurs, les liens entre les variables de sommeil et les variables de risque conservent le même sens après imputation, avec des corrélations négatives qui restent visibles, bien que légèrement atténuées. Dans l’ensemble, les méthodes d’imputation tendent à lisser l’intensité des corrélations sans modifier leur organisation ni la hiérarchie des relations entre variables, ce qui indique que la structure globale des données est préservée après imputation.
+
+
+#### 4.5.2 Régression linéaire avant / après imputation
+
+Après avoir évalué l’impact de l’imputation sur les distributions et les corrélations, il est également important de vérifier si le traitement des valeurs manquantes modifie les relations statistiques utilisées dans un modèle de régression. Comparer un même modèle estimé avant et après imputation permet d’évaluer si les coefficients, la significativité ou la qualité globale du modèle (R²) sont influencés par la complétion des données. 
+
+Tout d'abord, afin de limiter les problèmes de colinéarité et de sur-ajustement, nous retenons un modèle réduit et biologiquement cohérent, avec le poids corporel comme variable expliquée et l’espérance de vie, la durée de gestation et le danger comme variables explicatives.
+
+Ensuite, étant donné la forte asymétrie du poids corporel, de l’espérance de vie et de la durée de gestation, ainsi que les importantes différences d’échelle entre espèces, ces variables sont transformées en logarithme afin de limiter l’influence des valeurs extrêmes et de faciliter l’interprétation des résultats.
+
+Enfin, la variable danger étant de nature ordinale, elle est introduite dans les régressions sous forme de variables indicatrices, le niveau « aucun danger », donc 1, servant de catégorie de référence, afin d’éviter toute hypothèse de linéarité entre les niveaux de risque.
+
+
+```{r, results='hide'}
+# Sélection des variables
+vars_model <- c(
+  "poids_corporel",
+  "esperance_vie",
+  "duree_gestation",
+  "danger"
+)
+# Sous-échantillon
+data_avant_model <- mammals_original[, vars_model]
+
+# SUPPRESSION TOTALE DE L'ORDRE 
+data_avant_model$danger <- factor(
+  as.character(data_avant_model$danger),
+  levels = c("1", "2", "3", "4", "5")
+)
+
+# Sous-échantillon
+data_apres_model <- mammals_complet[, vars_model]
+
+# SUPPRESSION TOTALE DE L'ORDRE 
+data_apres_model$danger <- factor(
+  as.character(data_apres_model$danger),
+  levels = c("1", "2", "3", "4", "5")
+)
+
+
+```
+
+
+```{r}
+#avant 
+model_avant <- lm(
+  log(poids_corporel) ~ 
+    log(esperance_vie) + 
+    log(duree_gestation) + 
+    danger,
+  data = data_avant_model
+)
+
+summary(model_avant)
+
+```
+
+```{r}
+#apres 
+model_apres <- lm(
+  log(poids_corporel) ~ 
+    log(esperance_vie) + 
+    log(duree_gestation) + 
+    danger,
+  data = data_apres_model
+)
+
+summary(model_apres)
+
+```
+
+
+```{r}
+library(lmtest)
+resettest(model_avant)
+resettest(model_apres)
+```
+La spécification du modèle est vérifiée à l’aide du test RESET de Ramsey, qui ne met pas en évidence de problème de spécification.
+
+
+**Tableau récapitulatif** 
+
+```{r, echo=FALSE}
+comparison_models <- data.frame(
+  Modele = c("Avant imputation", "Après imputation"),
+  N_obs = c(
+    nobs(model_avant),
+    nobs(model_apres)
+  ),
+  R2 = c(
+    summary(model_avant)$r.squared,
+    summary(model_apres)$r.squared
+  ),
+  R2_ajuste = c(
+    summary(model_avant)$adj.r.squared,
+    summary(model_apres)$adj.r.squared
+  )
+)
+
+comparison_models
+
+```
+
+Avant imputation, le modèle est estimé sur 55 observations et présente un R² d’environ 0,67, avec un R² ajusté proche de 0,63, ce qui indique une capacité explicative relativement élevée compte tenu de la taille réduite de l’échantillon. Après imputation, le nombre d’observations augmente à 62, ce qui permet d’exploiter l’ensemble des données disponibles. Le R² diminue légèrement, passant à environ 0,66, et le R² ajusté à environ 0,62.
+
+Cette légère baisse du pouvoir explicatif s’explique en partie par l’introduction de valeurs imputées, qui tend à lisser les relations entre variables, ainsi que par l’augmentation du nombre d’observations. Néanmoins, les niveaux de R² restent proches avant et après imputation, ce qui suggère que les différentes méthodes d’imputation n’ont pas modifié **substantiellement** la qualité globale du modèle. L’imputation permet ainsi de gagner en taille d’échantillon sans dégrader de manière significative les performances du modèle.
+
+
+# 5) Limites des méthodes utilisées
+
+La première limite de ce travail concerne la taille du jeu de données. L’analyse repose sur 62 espèces de mammifères, ce qui reste relativement restreint au regard de la grande diversité biologique existante. Cette taille limitée peut réduire la précision de certaines analyses statistiques, notamment pour les modèles de régression impliquant plusieurs variables explicatives.
+
+
+Concernant les méthodes d’imputation, chacune présente ses propres limites.
+L’imputation par sources externes repose sur des données issues de la littérature ou de bases zoologiques, ce qui garantit une bonne cohérence biologique. Toutefois, cette méthode dépend fortement de la qualité et de la comparabilité des sources utilisées.
+L’imputation par régression suppose l’existence de relations stables entre les variables et ne peut être appliquée que lorsque les variables explicatives sont disponibles, ce qui limite son champ d’application.
+Enfin, l’imputation multivariée par la méthode MICE repose sur des modèles statistiques itératifs. Même si les versions imputées obtenues sont très proches les unes des autres, cette méthode peut lisser certaines particularités propres à des espèces atypiques.
+
+
+# 6) Conclusion 
+
+Pour conclure, ce projet nous a permis d’exploiter un jeu de données biologique comportant des valeurs manquantes en mettant en place une démarche progressive et réfléchie d’imputation. L’objectif n’était pas seulement de remplacer les valeurs absentes, mais surtout de vérifier si ces imputations étaient cohérentes, biologiquement plausibles et sans impact négatif sur les analyses statistiques.
+
+Dans un premier temps, une imputation par sources externes a été réalisée pour certaines variables biologiques importantes, ce qui a permis d’obtenir des valeurs cohérentes avec les ordres de grandeur attendus lorsque des informations fiables étaient disponibles. Une imputation par régression linéaire a ensuite été mise en place en s’appuyant sur les relations entre variables corrélées. Cette méthode donne des résultats globalement satisfaisants, mais reste dépendante des hypothèses du modèle. Enfin, l’imputation multiple par la méthode MICE a été utilisée afin de compléter l’ensemble des valeurs manquantes. Les résultats obtenus sont stables d’une imputation à l’autre, aussi bien en termes de distributions que de corrélations, ce qui montre que cette approche est bien adaptée à nos données.
+
+La comparaison globale avant et après imputation montre que les méthodes utilisées préservent la structure du jeu de données. Les corrélations principales restent stables et les modèles de régression gagnent en qualité grâce à l’augmentation du nombre d’observations, sans modification artificielle des relations entre variables. Les résultats biologiques obtenus sont cohérents avec ce qui est attendu, notamment concernant les liens entre taille des espèces, sommeil, durée de gestation et contraintes environnementales.
+
+En conclusion, ce travail met en évidence que le choix de la méthode d’imputation doit être adapté à la nature des variables et aux objectifs de l’analyse. Aucune méthode n’est universellement meilleure, mais leur combinaison raisonnée permet d’obtenir un jeu de données complet, cohérent et assez exploitable. Ce projet souligne également l’importance d’une réflexion méthodologique en amont et montre que l’imputation, lorsqu’elle est bien conduite, constitue un véritable outil d’aide à l’analyse statistique et biologique.
+
+# 7) Annexes 
+
+```{r, include = FALSE}
+#trouver le fichier avec le doc annexe
+setwd("/Users/ameliepires/Desktop/Documents/FAC/M1/CM biostatistique I/projet/projet")
+list.files()
+```
+
+```{r, echo=FALSE}
+knitr::asis_output(
+  paste(
+    "```r",
+    paste(readLines("annexe_code_cache.R"), collapse = "\n"),
+    "```",
+    sep = "\n"
+  )
+)
+```
+
+
