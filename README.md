@@ -1,6 +1,6 @@
 # Sommeil des mammifères (Analyse et imputation des données)
 
-Projet réalisé par **Amélie Pires et Ikram Abouzayd** dans le cadre du cours de biostatistique du Master 1 Économétrie Appliquée à l’IAE Nantes, en 2025–2026.
+Projet réalisé dans le cadre du cours de biostatistique enseigné par Marie VAUGOYEAU dans le Master 1 Économétrie Appliquée à l’IAE Nantes, en 2025–2026.
 
 ## Objectif
 
